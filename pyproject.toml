@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agent-service"
 version = "0.1.0"
-description = "Agentic AI knowledge assistant with RAG (Claude + pgvector + Voyage)"
+description = "Agentic AI knowledge assistant with RAG (ChatGPT + pgvector + Voyage)"
 requires-python = ">=3.11"
 readme = "README.md"
 dependencies = [
     "fastapi~=0.115",
     "uvicorn[standard]~=0.32",
     "sse-starlette~=2.1",
-    "anthropic>=0.40",
+    "openai>=1.99",
     "voyageai~=0.3",
     "asyncpg~=0.30",
     "pgvector~=0.3",

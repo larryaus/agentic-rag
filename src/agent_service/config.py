@@ -5,14 +5,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    ANTHROPIC_API_KEY: SecretStr = SecretStr("")
+    OPENAI_API_KEY: SecretStr = SecretStr("")
     VOYAGE_API_KEY: SecretStr = SecretStr("")
 
     DATABASE_URL: str = "postgresql://postgres:postgres@postgres:5432/agent_db"
     REDIS_URL: str = "redis://redis:6379/0"
 
-    MAIN_MODEL: str = "claude-sonnet-4-6"
-    CHEAP_MODEL: str = "claude-haiku-4-5-20251001"
+    MAIN_MODEL: str = "gpt-5.1-chat-latest"
+    CHEAP_MODEL: str = "gpt-5-mini"
     EMBED_MODEL: str = "voyage-3"
     RERANK_MODEL: str = "rerank-2"
 

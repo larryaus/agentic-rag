@@ -1,7 +1,7 @@
-"""Agent tool-use loop test with a fully fake Anthropic client.
+"""Agent tool-use loop test with a fully fake OpenAI client.
 
 Verifies:
-  (a) when stop_reason is "tool_use", the dispatcher is called
+  (a) when finish_reason is "tool_calls", the dispatcher is called
   (b) SSE frame order is tool_use -> citation -> text -> done
   (c) loop terminates within MAX_TOOL_TURNS
   (d) assistant message is persisted with citations attached
@@ -15,7 +15,7 @@ from uuid import uuid4
 import pytest
 
 
-# ---------- fake anthropic streaming helpers ----------
+# ---------- fake OpenAI streaming helpers ----------
 
 
 class _AsyncIter:
@@ -27,38 +27,39 @@ class _AsyncIter:
         return self._items.pop(0)
 
 
-class _FakeStream:
-    def __init__(self, text_chunks, final):
-        self._text = text_chunks
-        self._final = final
-    async def __aenter__(self): return self
-    async def __aexit__(self, *_a): return False
-    @property
-    def text_stream(self): return _AsyncIter(self._text)
-    async def get_final_message(self): return self._final
-
-
-class _FakeMessages:
+class _FakeCompletions:
     def __init__(self, scripted):
         self._scripted = list(scripted)
         self.calls = []
-    def stream(self, **kwargs):
+    async def create(self, **kwargs):
         self.calls.append(kwargs)
-        text_chunks, final = self._scripted.pop(0)
-        return _FakeStream(text_chunks, final)
+        return _AsyncIter(self._scripted.pop(0))
 
 
-class _FakeAnthropic:
+class _FakeChat:
     def __init__(self, scripted):
-        self.messages = _FakeMessages(scripted)
+        self.completions = _FakeCompletions(scripted)
 
 
-def _block_text(text):
-    return SimpleNamespace(type="text", text=text)
+class _FakeOpenAI:
+    def __init__(self, scripted):
+        self.chat = _FakeChat(scripted)
 
 
-def _block_tool_use(id_, name, inp):
-    return SimpleNamespace(type="tool_use", id=id_, name=name, input=inp)
+def _chunk(*, content=None, tool_call=None, finish_reason=None):
+    delta = SimpleNamespace(content=content, tool_calls=[tool_call] if tool_call else None)
+    return SimpleNamespace(
+        choices=[SimpleNamespace(delta=delta, finish_reason=finish_reason)]
+    )
+
+
+def _tool_call_delta(id_, name, arguments):
+    return SimpleNamespace(
+        index=0,
+        id=id_,
+        type="function",
+        function=SimpleNamespace(name=name, arguments=arguments),
+    )
 
 
 # ---------- fake DB pool / repo ----------
@@ -103,26 +104,24 @@ async def test_loop_runs_one_tool_turn_then_finishes(monkeypatch):
 
     sid = uuid4()
 
-    # script: turn1 -> tool_use; turn2 -> text + end_turn
+    # script: turn1 -> tool_calls; turn2 -> text + stop
     scripted = [
-        (
-            [],  # no streamed text on turn 1
-            SimpleNamespace(
-                content=[_block_tool_use("tu_1", "search_knowledge_base", {"query": "请假"})],
-                stop_reason="tool_use",
+        [
+            _chunk(
+                tool_call=_tool_call_delta(
+                    "call_1",
+                    "search_knowledge_base",
+                    '{"query": "请假"}',
+                ),
+                finish_reason="tool_calls",
             ),
-        ),
-        (
-            ["请假流程是: ", "提前 3 天 OA 申请 [doc:1#chunk:0]。"],
-            SimpleNamespace(
-                content=[
-                    _block_text("请假流程是: 提前 3 天 OA 申请 [doc:1#chunk:0]。"),
-                ],
-                stop_reason="end_turn",
-            ),
-        ),
+        ],
+        [
+            _chunk(content="请假流程是: "),
+            _chunk(content="提前 3 天 OA 申请 [doc:1#chunk:0]。", finish_reason="stop"),
+        ],
     ]
-    fake_client = _FakeAnthropic(scripted)
+    fake_client = _FakeOpenAI(scripted)
 
     # fake dispatch
     async def fake_dispatch(name, args):
@@ -159,7 +158,7 @@ async def test_loop_runs_one_tool_turn_then_finishes(monkeypatch):
     async def fake_touch(_conn, _sid):
         return None
 
-    monkeypatch.setattr(loop_mod.repo, "load_messages_for_anthropic", fake_load)
+    monkeypatch.setattr(loop_mod.repo, "load_messages_for_openai", fake_load)
     monkeypatch.setattr(loop_mod.repo, "append_message", fake_append)
     monkeypatch.setattr(loop_mod.repo, "touch_session", fake_touch)
 
@@ -186,7 +185,7 @@ async def test_loop_runs_one_tool_turn_then_finishes(monkeypatch):
     await collector
 
     # (a) dispatch was called (we asserted inside fake_dispatch); also turn count == 2
-    assert len(fake_client.messages.calls) == 2
+    assert len(fake_client.chat.completions.calls) == 2
 
     # (b) frame order: tool_use -> citation(s) -> text -> done
     names = [e["event"] for e in events]
@@ -198,8 +197,8 @@ async def test_loop_runs_one_tool_turn_then_finishes(monkeypatch):
     assert names.index("citation") < names.index("text")
 
     # (c) bounded by MAX_TOOL_TURNS — already proved by exiting cleanly
-    # (d) persisted: user, assistant(turn1), user(tool_results), assistant(turn2)
+    # (d) persisted: user, assistant(turn1), tool, assistant(turn2)
     roles = [p["role"] for p in persisted]
-    assert roles == ["user", "assistant", "user", "assistant"]
+    assert roles == ["user", "assistant", "tool", "assistant"]
     final_assistant = persisted[-1]
     assert any(c["document_id"] == 1 and c["ord"] == 0 for c in final_assistant["citations"])

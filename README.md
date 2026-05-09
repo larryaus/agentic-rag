@@ -1,7 +1,7 @@
 # 智答 · Agentic AI 知识助手（RAG）
 
 一个**最小可运行**的端到端 Agentic AI 系统：用户上传文档 → 切块 / 向量化 / 入库 → 用户提问时
-Claude 通过**工具调用循环**自主决定何时检索、检索什么、是否再次检索、何时收尾，最终以 SSE
+ChatGPT 通过**工具调用循环**自主决定何时检索、检索什么、是否再次检索、何时收尾，最终以 SSE
 流式吐字 + 可追溯的引用（`[doc:#chunk:]`）回应。
 
 ---
@@ -10,7 +10,7 @@ Claude 通过**工具调用循环**自主决定何时检索、检索什么、是
 
 | 维度 | 选型 | 说明 |
 |---|---|---|
-| 编排 | Anthropic Claude（`claude-sonnet-4-6` 主循环 / `claude-haiku-4-5-20251001` 查询改写） | tool-use 循环；prompt caching |
+| 编排 | OpenAI ChatGPT（`gpt-5.1-chat-latest` 主循环 / `gpt-5-mini` 查询改写） | tool-calling 循环；SSE 流式输出 |
 | 检索 | pgvector（HNSW）+ tsvector(BM25-ish)+ RRF + Voyage `rerank-2` | 单库混合检索 |
 | 嵌入 | Voyage `voyage-3`（1024 维，多语言含中文） | 文档/查询双 input_type |
 | 后端 | Python 3.11 + FastAPI + asyncpg + sse-starlette | 全异步，SSE 流式 |
@@ -73,7 +73,7 @@ Claude 通过**工具调用循环**自主决定何时检索、检索什么、是
 | `src/agent_service/retrieval/embeddings.py` | Voyage 异步 batch embedding |
 | `src/agent_service/retrieval/hybrid.py` | 向量 + tsvector + RRF 单条 SQL |
 | `src/agent_service/retrieval/reranker.py` | Voyage `rerank-2`（开关） |
-| `src/agent_service/retrieval/query_rewrite.py` | Haiku 改写检索查询 |
+| `src/agent_service/retrieval/query_rewrite.py` | 轻量 OpenAI 模型改写检索查询 |
 | `src/agent_service/agent/prompts.py` | 中文 system prompt |
 | `src/agent_service/agent/tools.py` | 3 个工具的 schema + dispatch |
 | `src/agent_service/agent/loop.py` | 流式 tool-use 循环（核心） |
@@ -133,23 +133,22 @@ User ─POST /chat─► chat.router
    └► repo.create_session(若 session_id 为空)
    └► sse.send("session", {sid})
    └► loop.run_streaming():
-        load_messages_for_anthropic
+        load_messages_for_openai
         loop:
-          messages.stream(model=sonnet-4-6, system=cached, tools=cached, history)
+          chat.completions.create(model=gpt-5.1-chat-latest, tools, stream, history)
             ──► sse.send("text", delta) for each text delta
-          final = stream.get_final_message()
-          if stop_reason != "tool_use": break
-          for tu in final.content where type==tool_use:
+          if finish_reason != "tool_calls": break
+          for tu in assistant.tool_calls:
             sse.send("tool_use", ...)
-            result = tools.dispatch(tu.name, tu.input)
+            result = tools.dispatch(tu.function.name, parsed arguments)
               search_knowledge_base ──►
-                 query_rewrite (Haiku)
+                 query_rewrite (gpt-5-mini)
                  embed_query (Voyage)
                  hybrid_search (vector+BM25+RRF)
                  rerank (Voyage)
                  hits with citation_token
             for hit: sse.send("citation", hit)
-            append tool_result to history
+            append tool message to history
         persist new messages + citations (事务)
         sse.send("done", ...)
 ```
@@ -161,7 +160,7 @@ User ─POST /chat─► chat.router
 ```bash
 cp .env.example .env
 # 在 .env 中填入:
-#   ANTHROPIC_API_KEY=sk-ant-...
+#   OPENAI_API_KEY=sk-...
 #   VOYAGE_API_KEY=pa-...
 
 docker compose up --build
@@ -208,12 +207,12 @@ pytest -q
 
 1. **混合检索 + RRF（`k=60`）**：向量 cosine 召回 40 + tsvector BM25 召回 40，按 `1/(60+rank)` 累加排名融合，避免单一通道翻车。Voyage `rerank-2` 把候选 20 → 8，提升精确率。
 2. **切块**：递归 token 切块，分隔符优先级 `["\n## ", "\n### ", "\n\n", "\n", "。", "！", "？", " "]`，512 token / 64 overlap。`tiktoken` 不可用时自动退化为 ASCII/4 + 非 ASCII/1 的字符级近似。
-3. **Prompt caching**：system prompt 与 tools 数组的最后一项打 `cache_control: ephemeral`，缓存命中后 system+tools 部分按 1/10 计费。
-4. **双模型**：主循环用 `claude-sonnet-4-6`（最强工具调用），查询改写用 `claude-haiku-4-5-20251001`（极廉价）。
+3. **工具调用循环**：ChatGPT 主循环以 OpenAI tool calls 驱动检索、拉全文、列文档等动作，工具结果用 `tool` 消息回填给模型。
+4. **双模型**：主循环用 `gpt-5.1-chat-latest`，查询改写用更轻量的 `gpt-5-mini`。
 5. **引用格式**：`[doc:{document_id}#chunk:{ord}]`。工具结果中每条 hit 已经预先打上该 token，模型只需原样贴回；前端正则替换为可点击 chip。
-6. **持久化**：每轮对话保存 user / assistant / user(tool_results) / assistant 四种角色到 `messages` 表（Anthropic 原生 content blocks，便于回放）；assistant 行附带 `citations` JSON。
+6. **持久化**：每轮对话保存 user / assistant / tool / assistant 等角色到 `messages` 表（OpenAI tool-call 结构，兼容旧 content blocks 回放）；assistant 行附带 `citations` JSON。
 7. **去重**：上传文件以 SHA-256 为唯一键；重复上传直接返回原 `document_id`。
-8. **错误处理**：工具调用异常以 `{"error": ...}` 作为 tool_result 返回给模型，让模型自我恢复或换关键词重试，而不是中断流。
+8. **错误处理**：工具调用异常以 `{"error": ...}` 作为 tool 消息返回给模型，让模型自我恢复或换关键词重试，而不是中断流。
 
 ---
 
@@ -232,7 +231,7 @@ done
 
 # 起服务
 export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/agent_db
-export ANTHROPIC_API_KEY=sk-ant-...
+export OPENAI_API_KEY=sk-...
 export VOYAGE_API_KEY=pa-...
 pip install -e ".[dev]"
 python scripts/seed.py

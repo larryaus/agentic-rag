@@ -1,11 +1,11 @@
-"""Cheap query rewrite using Haiku — turn conversational query into a
+"""Cheap query rewrite using OpenAI — turn conversational query into a
 retrieval-friendly phrase. Fails open: returns original on any error.
 """
 
 from __future__ import annotations
 
 from agent_service.config import settings
-from agent_service.deps import get_anthropic
+from agent_service.deps import get_openai
 
 
 _PROMPT = (
@@ -16,17 +16,16 @@ _PROMPT = (
 
 async def rewrite_query(user_text: str) -> str:
     try:
-        client = get_anthropic()
-        msg = await client.messages.create(
+        client = get_openai()
+        response = await client.chat.completions.create(
             model=settings.CHEAP_MODEL,
-            max_tokens=128,
-            system=_PROMPT,
-            messages=[{"role": "user", "content": user_text}],
+            max_completion_tokens=128,
+            messages=[
+                {"role": "system", "content": _PROMPT},
+                {"role": "user", "content": user_text},
+            ],
         )
-        for block in msg.content:
-            if getattr(block, "type", None) == "text":
-                rewritten = block.text.strip()
-                return rewritten or user_text
-        return user_text
+        rewritten = (response.choices[0].message.content or "").strip()
+        return rewritten or user_text
     except Exception:
         return user_text
