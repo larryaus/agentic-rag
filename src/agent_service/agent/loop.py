@@ -1,10 +1,10 @@
-"""Streaming tool-use loop driving Claude with the RAG tools.
+"""Streaming tool-use loop driving ChatGPT with the RAG tools.
 
 The loop:
   1. loads conversation history from db
   2. appends user message
-  3. iterates messages.stream until stop_reason != "tool_use"
-     forwarding text deltas + tool_use + citation events to SSE
+  3. iterates chat.completions streaming until finish_reason != "tool_calls"
+     forwarding text deltas + tool_call + citation events to SSE
   4. persists user msg + new assistant/tool turns in one transaction
 """
 
@@ -14,8 +14,8 @@ import json
 from typing import Any
 from uuid import UUID
 
-import anthropic
 import asyncpg
+from openai import AsyncOpenAI
 
 from agent_service.agent import tools as agent_tools
 from agent_service.agent.citations import find_citation_tokens
@@ -25,44 +25,95 @@ from agent_service.db import repo
 from agent_service.sse import SSEChannel
 
 
-_SYSTEM_BLOCKS = [
-    {
-        "type": "text",
-        "text": SYSTEM_PROMPT,
-        "cache_control": {"type": "ephemeral"},
+def _assistant_text(message: dict[str, Any]) -> str:
+    return message.get("content") or ""
+
+
+def _persisted_assistant(message: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "text": message.get("content") or "",
+        "tool_calls": message.get("tool_calls") or [],
     }
-]
 
 
-def _serialize_blocks(blocks: list[Any]) -> list[dict]:
-    """Convert SDK content blocks to plain dicts the API will re-accept."""
-    out = []
-    for b in blocks:
-        if isinstance(b, dict):
-            out.append(b)
+def _parse_tool_args(raw: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return {"_invalid_json": raw}
+    return parsed if isinstance(parsed, dict) else {"_value": parsed}
+
+
+async def _stream_chat_completion(
+    *,
+    client: AsyncOpenAI,
+    messages: list[dict[str, Any]],
+    sse: SSEChannel,
+    tools_payload: list[dict[str, Any]],
+) -> tuple[dict[str, Any], str | None]:
+    stream = await client.chat.completions.create(
+        model=settings.MAIN_MODEL,
+        max_completion_tokens=2048,
+        messages=[{"role": "system", "content": SYSTEM_PROMPT}, *messages],
+        tools=tools_payload,
+        tool_choice="auto",
+        stream=True,
+    )
+
+    text_parts: list[str] = []
+    tool_calls_by_index: dict[int, dict[str, Any]] = {}
+    finish_reason: str | None = None
+
+    async for chunk in stream:
+        if not chunk.choices:
             continue
-        t = getattr(b, "type", None)
-        if t == "text":
-            out.append({"type": "text", "text": b.text})
-        elif t == "tool_use":
-            out.append(
+        choice = chunk.choices[0]
+        finish_reason = choice.finish_reason or finish_reason
+        delta = choice.delta
+
+        content_delta = getattr(delta, "content", None)
+        if content_delta:
+            text_parts.append(content_delta)
+            await sse.send("text", {"delta": content_delta})
+
+        for tool_delta in getattr(delta, "tool_calls", None) or []:
+            index = getattr(tool_delta, "index", 0)
+            acc = tool_calls_by_index.setdefault(
+                index,
                 {
-                    "type": "tool_use",
-                    "id": b.id,
-                    "name": b.name,
-                    "input": b.input,
-                }
+                    "id": "",
+                    "type": "function",
+                    "function": {"name": "", "arguments": ""},
+                },
             )
-    return out
+            if getattr(tool_delta, "id", None):
+                acc["id"] = tool_delta.id
+            if getattr(tool_delta, "type", None):
+                acc["type"] = tool_delta.type
 
+            fn_delta = getattr(tool_delta, "function", None)
+            if fn_delta is None:
+                continue
+            if getattr(fn_delta, "name", None):
+                acc["function"]["name"] += fn_delta.name
+            if getattr(fn_delta, "arguments", None):
+                acc["function"]["arguments"] += fn_delta.arguments
 
-def _assistant_text(blocks: list[dict]) -> str:
-    return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+    tool_calls = [
+        call for _, call in sorted(tool_calls_by_index.items(), key=lambda item: item[0])
+    ]
+    assistant_message: dict[str, Any] = {
+        "role": "assistant",
+        "content": "".join(text_parts) or None,
+    }
+    if tool_calls:
+        assistant_message["tool_calls"] = tool_calls
+    return assistant_message, finish_reason
 
 
 async def run_streaming(
     *,
-    client: anthropic.AsyncAnthropic,
+    client: AsyncOpenAI,
     pool: asyncpg.Pool,
     sse: SSEChannel,
     session_id: UUID,
@@ -70,7 +121,7 @@ async def run_streaming(
     document_ids: list[int] | None = None,
 ) -> None:
     async with pool.acquire() as conn:
-        history = await repo.load_messages_for_anthropic(conn, session_id)
+        history = await repo.load_messages_for_openai(conn, session_id)
 
     history.append({"role": "user", "content": user_text})
     new_rows: list[tuple[str, Any, list[dict]]] = [
@@ -78,51 +129,52 @@ async def run_streaming(
     ]
 
     citation_index: dict[tuple[int, int], dict] = {}
-    tools_payload = agent_tools.tools_with_cache()
+    tools_payload = agent_tools.tools_for_openai()
+    finish_reason: str | None = None
 
     for _turn in range(settings.MAX_TOOL_TURNS):
-        async with client.messages.stream(
-            model=settings.MAIN_MODEL,
-            max_tokens=2048,
-            system=_SYSTEM_BLOCKS,
-            tools=tools_payload,
+        assistant_message, finish_reason = await _stream_chat_completion(
+            client=client,
             messages=history,
-        ) as stream:
-            async for chunk in stream.text_stream:
-                if chunk:
-                    await sse.send("text", {"delta": chunk})
-            final = await stream.get_final_message()
-
-        assistant_blocks = _serialize_blocks(final.content)
-        history.append({"role": "assistant", "content": assistant_blocks})
+            sse=sse,
+            tools_payload=tools_payload,
+        )
+        history.append(assistant_message)
 
         # citations referenced in this assistant turn's text
-        text = _assistant_text(assistant_blocks)
+        text = _assistant_text(assistant_message)
         turn_citations: list[dict] = []
         for doc_id, ord_ in find_citation_tokens(text):
             key = (doc_id, ord_)
             if key in citation_index:
                 turn_citations.append(citation_index[key])
 
-        new_rows.append(("assistant", assistant_blocks, turn_citations))
+        new_rows.append(("assistant", _persisted_assistant(assistant_message), turn_citations))
 
-        if final.stop_reason != "tool_use":
+        tool_calls = assistant_message.get("tool_calls") or []
+        if finish_reason != "tool_calls" or not tool_calls:
             break
 
-        tool_result_blocks: list[dict] = []
-        for block in assistant_blocks:
-            if block.get("type") != "tool_use":
-                continue
+        for tool_call in tool_calls:
+            function = tool_call.get("function") or {}
+            name = function.get("name") or ""
+            args = _parse_tool_args(function.get("arguments") or "")
+            if name == "search_knowledge_base" and document_ids and "document_ids" not in args:
+                args["document_ids"] = document_ids
+
             await sse.send(
                 "tool_use",
-                {"name": block["name"], "input": block.get("input", {})},
+                {"name": name, "input": args},
             )
             try:
-                result = await agent_tools.dispatch(block["name"], block.get("input", {}))
+                if "_invalid_json" in args:
+                    result = {"error": f"invalid tool arguments: {args['_invalid_json']}"}
+                else:
+                    result = await agent_tools.dispatch(name, args)
             except Exception as exc:  # surface errors back to the model
                 result = {"error": f"{type(exc).__name__}: {exc}"}
 
-            if block["name"] == "search_knowledge_base":
+            if name == "search_knowledge_base":
                 for hit in result.get("hits", []):
                     key = (hit["document_id"], hit["ord"])
                     citation_index[key] = {
@@ -135,17 +187,24 @@ async def run_streaming(
                     }
                     await sse.send("citation", citation_index[key])
 
-            tool_result_blocks.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": block["id"],
-                    "content": json.dumps(result, ensure_ascii=False),
-                }
+            result_json = json.dumps(result, ensure_ascii=False)
+            tool_message = {
+                "role": "tool",
+                "tool_call_id": tool_call["id"],
+                "content": result_json,
+            }
+            history.append(tool_message)
+            new_rows.append(
+                (
+                    "tool",
+                    {
+                        "tool_call_id": tool_call["id"],
+                        "name": name,
+                        "content": result_json,
+                    },
+                    [],
+                )
             )
-
-        if tool_result_blocks:
-            history.append({"role": "user", "content": tool_result_blocks})
-            new_rows.append(("user", tool_result_blocks, []))
 
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -161,5 +220,5 @@ async def run_streaming(
 
     await sse.send(
         "done",
-        {"session_id": str(session_id), "stop_reason": final.stop_reason},
+        {"session_id": str(session_id), "stop_reason": finish_reason},
     )

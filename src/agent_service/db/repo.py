@@ -210,14 +210,84 @@ async def load_messages(
     return out
 
 
-async def load_messages_for_anthropic(
+async def load_messages_for_openai(
     conn: asyncpg.Connection, session_id: UUID
 ) -> list[dict]:
-    """Returns messages in Anthropic content-block format ready to feed messages.create."""
+    """Return persisted messages in OpenAI Chat Completions format.
+
+    Existing databases may contain older content-block rows. This adapter
+    converts those rows so old sessions can still be replayed.
+    """
     raw = await load_messages(conn, session_id)
-    out = []
+    out: list[dict] = []
     for m in raw:
-        if m["role"] == "tool":
-            continue  # tool results are persisted as user messages with content blocks
-        out.append({"role": m["role"], "content": m["content"]})
+        role = m["role"]
+        content = m["content"]
+
+        if role == "tool":
+            if isinstance(content, dict):
+                out.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": content.get("tool_call_id", ""),
+                        "content": content.get("content", ""),
+                    }
+                )
+            continue
+
+        if role == "assistant":
+            if isinstance(content, dict) and (
+                "text" in content or "tool_calls" in content
+            ):
+                msg = {
+                    "role": "assistant",
+                    "content": content.get("text") or None,
+                }
+                if content.get("tool_calls"):
+                    msg["tool_calls"] = content["tool_calls"]
+                out.append(msg)
+                continue
+
+            if isinstance(content, list):
+                text_parts: list[str] = []
+                tool_calls: list[dict] = []
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") == "text":
+                        text_parts.append(block.get("text", ""))
+                    elif block.get("type") == "tool_use":
+                        tool_calls.append(
+                            {
+                                "id": block.get("id", ""),
+                                "type": "function",
+                                "function": {
+                                    "name": block.get("name", ""),
+                                    "arguments": json.dumps(
+                                        block.get("input", {}),
+                                        ensure_ascii=False,
+                                    ),
+                                },
+                            }
+                        )
+                msg = {"role": "assistant", "content": "".join(text_parts) or None}
+                if tool_calls:
+                    msg["tool_calls"] = tool_calls
+                out.append(msg)
+                continue
+
+        if role == "user" and isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "tool_result":
+                    continue
+                out.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": block.get("tool_use_id", ""),
+                        "content": block.get("content", ""),
+                    }
+                )
+            continue
+
+        out.append({"role": role, "content": content})
     return out

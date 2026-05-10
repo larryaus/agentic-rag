@@ -6,7 +6,7 @@ from sse_starlette.sse import EventSourceResponse
 from agent_service.agent.loop import run_streaming
 from agent_service.db.pool import get_pool
 from agent_service.db import repo
-from agent_service.deps import get_anthropic
+from agent_service.deps import get_openai
 from agent_service.schemas import ChatRequest
 from agent_service.sse import SSEChannel
 
@@ -16,7 +16,7 @@ router = APIRouter()
 @router.post("/chat")
 async def chat(req: ChatRequest):
     pool = await get_pool()
-    client = get_anthropic()
+    client = get_openai()
 
     session_id = req.session_id
     if session_id is None:

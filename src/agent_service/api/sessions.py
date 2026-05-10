@@ -1,3 +1,4 @@
+import json
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
@@ -17,6 +18,18 @@ def _flatten_message(row: dict) -> MessageDTO | None:
 
     if isinstance(content, str):
         text_parts.append(content)
+    elif isinstance(content, dict):
+        if role == "tool":
+            return None
+        text_parts.append(content.get("text", ""))
+        for call in content.get("tool_calls", []) or []:
+            function = call.get("function") or {}
+            args = function.get("arguments") or "{}"
+            try:
+                parsed_args = json.loads(args)
+            except Exception:
+                parsed_args = {"_raw": args}
+            tool_calls.append({"name": function.get("name"), "input": parsed_args})
     elif isinstance(content, list):
         # may be assistant blocks (text/tool_use) or user tool_result blocks
         is_tool_result_only = all(

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 from typing import Any
 
 import asyncpg
@@ -71,12 +70,19 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
-def tools_with_cache() -> list[dict[str, Any]]:
-    """Returns a copy of TOOLS where the LAST tool carries cache_control,
-    which causes Anthropic to cache the entire `tools` array prefix."""
-    out = copy.deepcopy(TOOLS)
-    out[-1]["cache_control"] = {"type": "ephemeral"}
-    return out
+def tools_for_openai() -> list[dict[str, Any]]:
+    """Return tool definitions in OpenAI Chat Completions function format."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool["input_schema"],
+            },
+        }
+        for tool in TOOLS
+    ]
 
 
 # ---------- dispatch ----------
