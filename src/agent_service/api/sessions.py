@@ -1,58 +1,18 @@
-import json
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
 from agent_service.db.pool import get_pool
 from agent_service.db import repo
-from agent_service.schemas import CitationDTO, MessageDTO, SessionDetail
+from agent_service.schemas import MessageDTO, SessionDetail
+from agent_service.transcript import visible_message_for_ui
 
 router = APIRouter()
 
 
 def _flatten_message(row: dict) -> MessageDTO | None:
-    role = row["role"]
-    content = row["content"]
-    text_parts: list[str] = []
-    tool_calls: list[dict] = []
-
-    if isinstance(content, str):
-        text_parts.append(content)
-    elif isinstance(content, dict):
-        if role == "tool":
-            return None
-        text_parts.append(content.get("text", ""))
-        for call in content.get("tool_calls", []) or []:
-            function = call.get("function") or {}
-            args = function.get("arguments") or "{}"
-            try:
-                parsed_args = json.loads(args)
-            except Exception:
-                parsed_args = {"_raw": args}
-            tool_calls.append({"name": function.get("name"), "input": parsed_args})
-    elif isinstance(content, list):
-        # may be assistant blocks (text/tool_use) or user tool_result blocks
-        is_tool_result_only = all(
-            (b.get("type") == "tool_result") for b in content if isinstance(b, dict)
-        )
-        if is_tool_result_only and role == "user":
-            return None  # hide internal tool results from UI
-        for b in content:
-            if not isinstance(b, dict):
-                continue
-            if b.get("type") == "text":
-                text_parts.append(b.get("text", ""))
-            elif b.get("type") == "tool_use":
-                tool_calls.append({"name": b.get("name"), "input": b.get("input", {})})
-
-    citations = [CitationDTO(**c) for c in (row.get("citations") or [])]
-    return MessageDTO(
-        role=role,
-        text="".join(text_parts),
-        tool_calls=tool_calls,
-        citations=citations,
-        created_at=row["created_at"],
-    )
+    visible = visible_message_for_ui(row)
+    return MessageDTO(**visible) if visible else None
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetail)

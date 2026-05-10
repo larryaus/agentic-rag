@@ -11,6 +11,7 @@ The loop:
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -23,25 +24,20 @@ from agent_service.agent.prompts import SYSTEM_PROMPT
 from agent_service.config import settings
 from agent_service.db import repo
 from agent_service.sse import SSEChannel
+from agent_service.transcript import (
+    assistant_for_storage,
+    assistant_text,
+    parse_tool_args,
+    tool_for_storage,
+    tool_message,
+)
 
 
-def _assistant_text(message: dict[str, Any]) -> str:
-    return message.get("content") or ""
-
-
-def _persisted_assistant(message: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "text": message.get("content") or "",
-        "tool_calls": message.get("tool_calls") or [],
-    }
-
-
-def _parse_tool_args(raw: str) -> dict[str, Any]:
-    try:
-        parsed = json.loads(raw or "{}")
-    except json.JSONDecodeError:
-        return {"_invalid_json": raw}
-    return parsed if isinstance(parsed, dict) else {"_value": parsed}
+@dataclass
+class PendingMessage:
+    role: str
+    content: Any
+    citations: list[dict]
 
 
 async def _stream_chat_completion(
@@ -77,27 +73,7 @@ async def _stream_chat_completion(
             await sse.send("text", {"delta": content_delta})
 
         for tool_delta in getattr(delta, "tool_calls", None) or []:
-            index = getattr(tool_delta, "index", 0)
-            acc = tool_calls_by_index.setdefault(
-                index,
-                {
-                    "id": "",
-                    "type": "function",
-                    "function": {"name": "", "arguments": ""},
-                },
-            )
-            if getattr(tool_delta, "id", None):
-                acc["id"] = tool_delta.id
-            if getattr(tool_delta, "type", None):
-                acc["type"] = tool_delta.type
-
-            fn_delta = getattr(tool_delta, "function", None)
-            if fn_delta is None:
-                continue
-            if getattr(fn_delta, "name", None):
-                acc["function"]["name"] += fn_delta.name
-            if getattr(fn_delta, "arguments", None):
-                acc["function"]["arguments"] += fn_delta.arguments
+            _accumulate_tool_delta(tool_calls_by_index, tool_delta)
 
     tool_calls = [
         call for _, call in sorted(tool_calls_by_index.items(), key=lambda item: item[0])
@@ -109,6 +85,32 @@ async def _stream_chat_completion(
     if tool_calls:
         assistant_message["tool_calls"] = tool_calls
     return assistant_message, finish_reason
+
+
+def _accumulate_tool_delta(
+    tool_calls_by_index: dict[int, dict[str, Any]], tool_delta: Any
+) -> None:
+    index = getattr(tool_delta, "index", 0)
+    acc = tool_calls_by_index.setdefault(
+        index,
+        {
+            "id": "",
+            "type": "function",
+            "function": {"name": "", "arguments": ""},
+        },
+    )
+    if getattr(tool_delta, "id", None):
+        acc["id"] = tool_delta.id
+    if getattr(tool_delta, "type", None):
+        acc["type"] = tool_delta.type
+
+    fn_delta = getattr(tool_delta, "function", None)
+    if fn_delta is None:
+        return
+    if getattr(fn_delta, "name", None):
+        acc["function"]["name"] += fn_delta.name
+    if getattr(fn_delta, "arguments", None):
+        acc["function"]["arguments"] += fn_delta.arguments
 
 
 async def run_streaming(
@@ -124,9 +126,7 @@ async def run_streaming(
         history = await repo.load_messages_for_openai(conn, session_id)
 
     history.append({"role": "user", "content": user_text})
-    new_rows: list[tuple[str, Any, list[dict]]] = [
-        ("user", user_text, [])
-    ]
+    pending_messages = [PendingMessage("user", user_text, [])]
 
     citation_index: dict[tuple[int, int], dict] = {}
     tools_payload = agent_tools.tools_for_openai()
@@ -141,84 +141,118 @@ async def run_streaming(
         )
         history.append(assistant_message)
 
-        # citations referenced in this assistant turn's text
-        text = _assistant_text(assistant_message)
-        turn_citations: list[dict] = []
-        for doc_id, ord_ in find_citation_tokens(text):
-            key = (doc_id, ord_)
-            if key in citation_index:
-                turn_citations.append(citation_index[key])
-
-        new_rows.append(("assistant", _persisted_assistant(assistant_message), turn_citations))
+        pending_messages.append(
+            PendingMessage(
+                "assistant",
+                assistant_for_storage(assistant_message),
+                _citations_for_text(assistant_text(assistant_message), citation_index),
+            )
+        )
 
         tool_calls = assistant_message.get("tool_calls") or []
         if finish_reason != "tool_calls" or not tool_calls:
             break
 
-        for tool_call in tool_calls:
-            function = tool_call.get("function") or {}
-            name = function.get("name") or ""
-            args = _parse_tool_args(function.get("arguments") or "")
-            if name == "search_knowledge_base" and document_ids and "document_ids" not in args:
-                args["document_ids"] = document_ids
+        await _run_tool_calls(
+            tool_calls=tool_calls,
+            document_ids=document_ids,
+            sse=sse,
+            history=history,
+            pending_messages=pending_messages,
+            citation_index=citation_index,
+        )
 
-            await sse.send(
-                "tool_use",
-                {"name": name, "input": args},
-            )
-            try:
-                if "_invalid_json" in args:
-                    result = {"error": f"invalid tool arguments: {args['_invalid_json']}"}
-                else:
-                    result = await agent_tools.dispatch(name, args)
-            except Exception as exc:  # surface errors back to the model
-                result = {"error": f"{type(exc).__name__}: {exc}"}
-
-            if name == "search_knowledge_base":
-                for hit in result.get("hits", []):
-                    key = (hit["document_id"], hit["ord"])
-                    citation_index[key] = {
-                        "document_id": hit["document_id"],
-                        "chunk_id": hit["chunk_id"],
-                        "ord": hit["ord"],
-                        "title": hit["title"],
-                        "snippet": hit["snippet"],
-                        "score": hit.get("score"),
-                    }
-                    await sse.send("citation", citation_index[key])
-
-            result_json = json.dumps(result, ensure_ascii=False)
-            tool_message = {
-                "role": "tool",
-                "tool_call_id": tool_call["id"],
-                "content": result_json,
-            }
-            history.append(tool_message)
-            new_rows.append(
-                (
-                    "tool",
-                    {
-                        "tool_call_id": tool_call["id"],
-                        "name": name,
-                        "content": result_json,
-                    },
-                    [],
-                )
-            )
-
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            for role, content, cits in new_rows:
-                await repo.append_message(
-                    conn,
-                    session_id=session_id,
-                    role=role,
-                    content=content,
-                    citations=cits,
-                )
-            await repo.touch_session(conn, session_id)
-
+    await _persist_messages(pool, session_id, pending_messages)
     await sse.send(
         "done",
         {"session_id": str(session_id), "stop_reason": finish_reason},
     )
+
+
+def _citations_for_text(
+    text: str, citation_index: dict[tuple[int, int], dict]
+) -> list[dict]:
+    turn_citations: list[dict] = []
+    for doc_id, ord_ in find_citation_tokens(text):
+        key = (doc_id, ord_)
+        if key in citation_index:
+            turn_citations.append(citation_index[key])
+    return turn_citations
+
+
+async def _run_tool_calls(
+    *,
+    tool_calls: list[dict[str, Any]],
+    document_ids: list[int] | None,
+    sse: SSEChannel,
+    history: list[dict[str, Any]],
+    pending_messages: list[PendingMessage],
+    citation_index: dict[tuple[int, int], dict],
+) -> None:
+    for tool_call in tool_calls:
+        function = tool_call.get("function") or {}
+        name = function.get("name") or ""
+        args = parse_tool_args(function.get("arguments") or "")
+        if name == "search_knowledge_base" and document_ids and "document_ids" not in args:
+            args["document_ids"] = document_ids
+
+        await sse.send("tool_use", {"name": name, "input": args})
+        result = await _dispatch_tool(name, args)
+
+        if name == "search_knowledge_base":
+            await _index_search_citations(result, citation_index, sse)
+
+        result_json = json.dumps(result, ensure_ascii=False)
+        history.append(tool_message(tool_call["id"], result_json))
+        pending_messages.append(
+            PendingMessage(
+                "tool",
+                tool_for_storage(tool_call["id"], name, result_json),
+                [],
+            )
+        )
+
+
+async def _dispatch_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    try:
+        if "_invalid_json" in args:
+            return {"error": f"invalid tool arguments: {args['_invalid_json']}"}
+        return await agent_tools.dispatch(name, args)
+    except Exception as exc:  # surface errors back to the model
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
+async def _index_search_citations(
+    result: dict[str, Any],
+    citation_index: dict[tuple[int, int], dict],
+    sse: SSEChannel,
+) -> None:
+    for hit in result.get("hits", []):
+        key = (hit["document_id"], hit["ord"])
+        citation_index[key] = {
+            "document_id": hit["document_id"],
+            "chunk_id": hit["chunk_id"],
+            "ord": hit["ord"],
+            "title": hit["title"],
+            "snippet": hit["snippet"],
+            "score": hit.get("score"),
+        }
+        await sse.send("citation", citation_index[key])
+
+
+async def _persist_messages(
+    pool: asyncpg.Pool,
+    session_id: UUID,
+    pending_messages: list[PendingMessage],
+) -> None:
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for message in pending_messages:
+                await repo.append_message(
+                    conn,
+                    session_id=session_id,
+                    role=message.role,
+                    content=message.content,
+                    citations=message.citations,
+                )
+            await repo.touch_session(conn, session_id)
