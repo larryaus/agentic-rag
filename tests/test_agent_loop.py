@@ -100,7 +100,6 @@ class _FakeTx:
 async def test_loop_runs_one_tool_turn_then_finishes(monkeypatch):
     from agent_service.agent import loop as loop_mod
     from agent_service.agent import tools as tools_mod
-    from agent_service.sse import SSEChannel
 
     sid = uuid4()
 
@@ -162,27 +161,14 @@ async def test_loop_runs_one_tool_turn_then_finishes(monkeypatch):
     monkeypatch.setattr(loop_mod.repo, "append_message", fake_append)
     monkeypatch.setattr(loop_mod.repo, "touch_session", fake_touch)
 
-    # collect SSE events
-    sse = SSEChannel()
     events: list[dict] = []
-
-    async def collect():
-        async for ev in sse.events():
-            events.append(ev)
-
-    import asyncio
-
-    collector = asyncio.create_task(collect())
-
-    await loop_mod.run_streaming(
+    async for ev in loop_mod.run_streaming(
         client=fake_client,  # type: ignore[arg-type]
         pool=_FakePool(),    # type: ignore[arg-type]
-        sse=sse,
         session_id=sid,
         user_text="如何请假？",
-    )
-    await sse.close()
-    await collector
+    ):
+        events.append(ev)
 
     # (a) dispatch was called (we asserted inside fake_dispatch); also turn count == 2
     assert len(fake_client.chat.completions.calls) == 2

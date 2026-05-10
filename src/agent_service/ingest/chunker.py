@@ -8,54 +8,23 @@ chunk to provide context.
 
 from __future__ import annotations
 
+import tiktoken
+
 SEPARATORS = ["\n## ", "\n### ", "\n\n", "\n", "。", "！", "？", " "]
 
-_ENC = None
-_ENC_TRIED = False
-
-
-def _enc():
-    """Return a tiktoken encoding if available + downloadable, else None.
-
-    tiktoken needs to fetch its BPE file the first time; if the network is
-    blocked we transparently fall back to a char-based heuristic so the
-    chunker still works (with slightly less precise token counts).
-    """
-    global _ENC, _ENC_TRIED
-    if _ENC_TRIED:
-        return _ENC
-    _ENC_TRIED = True
-    try:
-        import tiktoken
-        _ENC = tiktoken.get_encoding("cl100k_base")
-    except Exception:
-        _ENC = None
-    return _ENC
+_ENC = tiktoken.get_encoding("cl100k_base")
 
 
 def count_tokens(text: str) -> int:
-    enc = _enc()
-    if enc is not None:
-        return len(enc.encode(text))
-    # Fallback heuristic: Chinese ~1 token/char, ASCII ~1 token / 4 chars.
-    ascii_chars = sum(1 for c in text if ord(c) < 128)
-    other = len(text) - ascii_chars
-    return max(1, ascii_chars // 4 + other) if text else 0
+    return len(_ENC.encode(text))
 
 
-def _decode(tokens) -> str:
-    enc = _enc()
-    if enc is not None:
-        return enc.decode(tokens)
-    return "".join(tokens)
+def _decode(tokens: list[int]) -> str:
+    return _ENC.decode(tokens)
 
 
-def _encode(text: str):
-    enc = _enc()
-    if enc is not None:
-        return enc.encode(text)
-    # In fallback mode "tokens" are characters.
-    return list(text)
+def _encode(text: str) -> list[int]:
+    return _ENC.encode(text)
 
 
 def chunk_text(text: str, max_tokens: int = 512, overlap: int = 64) -> list[dict]:

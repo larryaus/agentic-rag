@@ -13,42 +13,28 @@ router = APIRouter()
 def _flatten_message(row: dict) -> MessageDTO | None:
     role = row["role"]
     content = row["content"]
-    text_parts: list[str] = []
-    tool_calls: list[dict] = []
+    if role == "tool":
+        return None
 
+    text = ""
+    tool_calls: list[dict] = []
     if isinstance(content, str):
-        text_parts.append(content)
+        text = content
     elif isinstance(content, dict):
-        if role == "tool":
-            return None
-        text_parts.append(content.get("text", ""))
-        for call in content.get("tool_calls", []) or []:
+        text = content.get("content") or ""
+        for call in content.get("tool_calls") or []:
             function = call.get("function") or {}
-            args = function.get("arguments") or "{}"
+            args_raw = function.get("arguments") or "{}"
             try:
-                parsed_args = json.loads(args)
-            except Exception:
-                parsed_args = {"_raw": args}
+                parsed_args = json.loads(args_raw)
+            except json.JSONDecodeError:
+                parsed_args = {"_raw": args_raw}
             tool_calls.append({"name": function.get("name"), "input": parsed_args})
-    elif isinstance(content, list):
-        # may be assistant blocks (text/tool_use) or user tool_result blocks
-        is_tool_result_only = all(
-            (b.get("type") == "tool_result") for b in content if isinstance(b, dict)
-        )
-        if is_tool_result_only and role == "user":
-            return None  # hide internal tool results from UI
-        for b in content:
-            if not isinstance(b, dict):
-                continue
-            if b.get("type") == "text":
-                text_parts.append(b.get("text", ""))
-            elif b.get("type") == "tool_use":
-                tool_calls.append({"name": b.get("name"), "input": b.get("input", {})})
 
     citations = [CitationDTO(**c) for c in (row.get("citations") or [])]
     return MessageDTO(
         role=role,
-        text="".join(text_parts),
+        text=text,
         tool_calls=tool_calls,
         citations=citations,
         created_at=row["created_at"],

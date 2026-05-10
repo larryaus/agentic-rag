@@ -15,6 +15,8 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install --upgrade pip && pip install -e .
 
+RUN python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+
 COPY migrations ./migrations
 COPY samples ./samples
 COPY scripts ./scripts

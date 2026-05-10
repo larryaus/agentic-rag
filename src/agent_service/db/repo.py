@@ -44,36 +44,21 @@ async def find_document_by_sha(conn: asyncpg.Connection, sha256: str) -> dict | 
 async def list_documents(
     conn: asyncpg.Connection, *, limit: int = 50, offset: int = 0, query: str | None = None
 ) -> list[dict]:
-    if query:
-        rows = await conn.fetch(
-            """
-            SELECT d.id, d.title, d.mime_type, d.byte_size, d.created_at,
-                   COALESCE(c.cnt, 0) AS chunk_count
-            FROM documents d
-            LEFT JOIN (SELECT document_id, COUNT(*) AS cnt FROM chunks GROUP BY document_id) c
-                   ON c.document_id = d.id
-            WHERE d.title ILIKE '%' || $1 || '%'
-            ORDER BY d.created_at DESC
-            LIMIT $2 OFFSET $3
-            """,
-            query,
-            limit,
-            offset,
-        )
-    else:
-        rows = await conn.fetch(
-            """
-            SELECT d.id, d.title, d.mime_type, d.byte_size, d.created_at,
-                   COALESCE(c.cnt, 0) AS chunk_count
-            FROM documents d
-            LEFT JOIN (SELECT document_id, COUNT(*) AS cnt FROM chunks GROUP BY document_id) c
-                   ON c.document_id = d.id
-            ORDER BY d.created_at DESC
-            LIMIT $1 OFFSET $2
-            """,
-            limit,
-            offset,
-        )
+    rows = await conn.fetch(
+        """
+        SELECT d.id, d.title, d.mime_type, d.byte_size, d.created_at,
+               COALESCE(c.cnt, 0) AS chunk_count
+        FROM documents d
+        LEFT JOIN (SELECT document_id, COUNT(*) AS cnt FROM chunks GROUP BY document_id) c
+               ON c.document_id = d.id
+        WHERE $1::text IS NULL OR d.title ILIKE '%' || $1 || '%'
+        ORDER BY d.created_at DESC
+        LIMIT $2 OFFSET $3
+        """,
+        query,
+        limit,
+        offset,
+    )
     return [dict(r) for r in rows]
 
 
@@ -213,81 +198,25 @@ async def load_messages(
 async def load_messages_for_openai(
     conn: asyncpg.Connection, session_id: UUID
 ) -> list[dict]:
-    """Return persisted messages in OpenAI Chat Completions format.
-
-    Existing databases may contain older content-block rows. This adapter
-    converts those rows so old sessions can still be replayed.
-    """
+    """Return persisted messages in OpenAI Chat Completions shape."""
     raw = await load_messages(conn, session_id)
     out: list[dict] = []
     for m in raw:
         role = m["role"]
         content = m["content"]
-
-        if role == "tool":
-            if isinstance(content, dict):
-                out.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": content.get("tool_call_id", ""),
-                        "content": content.get("content", ""),
-                    }
-                )
-            continue
-
         if role == "assistant":
-            if isinstance(content, dict) and (
-                "text" in content or "tool_calls" in content
-            ):
-                msg = {
-                    "role": "assistant",
-                    "content": content.get("text") or None,
+            msg: dict[str, Any] = {"role": "assistant", "content": content.get("content")}
+            if content.get("tool_calls"):
+                msg["tool_calls"] = content["tool_calls"]
+            out.append(msg)
+        elif role == "tool":
+            out.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": content["tool_call_id"],
+                    "content": content["content"],
                 }
-                if content.get("tool_calls"):
-                    msg["tool_calls"] = content["tool_calls"]
-                out.append(msg)
-                continue
-
-            if isinstance(content, list):
-                text_parts: list[str] = []
-                tool_calls: list[dict] = []
-                for block in content:
-                    if not isinstance(block, dict):
-                        continue
-                    if block.get("type") == "text":
-                        text_parts.append(block.get("text", ""))
-                    elif block.get("type") == "tool_use":
-                        tool_calls.append(
-                            {
-                                "id": block.get("id", ""),
-                                "type": "function",
-                                "function": {
-                                    "name": block.get("name", ""),
-                                    "arguments": json.dumps(
-                                        block.get("input", {}),
-                                        ensure_ascii=False,
-                                    ),
-                                },
-                            }
-                        )
-                msg = {"role": "assistant", "content": "".join(text_parts) or None}
-                if tool_calls:
-                    msg["tool_calls"] = tool_calls
-                out.append(msg)
-                continue
-
-        if role == "user" and isinstance(content, list):
-            for block in content:
-                if not isinstance(block, dict) or block.get("type") != "tool_result":
-                    continue
-                out.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": block.get("tool_use_id", ""),
-                        "content": block.get("content", ""),
-                    }
-                )
-            continue
-
-        out.append({"role": role, "content": content})
+            )
+        else:
+            out.append({"role": role, "content": content})
     return out
