@@ -1,0 +1,10 @@
+{
+  "app": "npx ts-node --prefer-ts-exts bin/app.ts",
+  "context": {
+    "frontendOrigin": "http://localhost:5173",
+    "cognitoDomainPrefix": "",
+    "embeddingModelId": "amazon.titan-embed-text-v2:0",
+    "embeddingDimension": 1024,
+    "chatModelId": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+  }
+}
