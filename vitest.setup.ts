@@ -1,0 +1,16 @@
+process.env.TABLE_NAME = 'test-table';
+process.env.KNOWLEDGE_BASE_ID = 'test-knowledge-base';
+process.env.DATA_SOURCE_ID = 'test-data-source';
+process.env.DOCS_BUCKET = 'test-documents';
+process.env.CHAT_MODEL_ID = 'us.example.test-model';
+process.env.USER_POOL_ID = 'us-east-1_test';
+process.env.USER_POOL_CLIENT_ID = 'test-client';
+process.env.RETRIEVAL_TOP_K = '8';
+process.env.MAX_TOOL_ITERATIONS = '6';
+process.env.MAX_HISTORY_MESSAGES = '20';
+process.env.SESSION_TTL_DAYS = '90';
+process.env.MAX_UPLOAD_BYTES = '26214400';
+process.env.ABANDONED_UPLOAD_MINUTES = '10';
+process.env.AWS_REGION = 'us-east-1';
+process.env.AWS_ACCESS_KEY_ID = 'test';
+process.env.AWS_SECRET_ACCESS_KEY = 'test';

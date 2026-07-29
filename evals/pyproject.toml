@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kb-evals"
+version = "0.1.0"
+description = "Golden-dataset schema scaffold for the enterprise knowledge base assistant."
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=7,<9"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

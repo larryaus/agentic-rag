@@ -5,7 +5,11 @@
       "Bash(git checkout *)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(claude plugin *)",
+      "Bash(codex login *)"
     ]
   }
 }

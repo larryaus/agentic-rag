@@ -1,0 +1,389 @@
+:root {
+  color: #182230;
+  background: #edf1f5;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+textarea,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app-shell {
+  display: grid;
+  grid-template:
+    "header header" 64px
+    "sidebar main" calc(100vh - 64px) / 340px 1fr;
+}
+
+.topbar {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  color: white;
+  background: #172b3a;
+}
+
+.topbar > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar button {
+  border: 1px solid #587081;
+  border-radius: 8px;
+  padding: 7px 12px;
+  color: white;
+  background: transparent;
+}
+
+.brand-mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 8px;
+  color: #172b3a;
+  background: #81d8c7;
+  font-weight: 800;
+}
+
+aside {
+  grid-area: sidebar;
+  overflow: auto;
+  border-right: 1px solid #d7dee5;
+  background: #f8fafb;
+}
+
+.app-shell > main {
+  grid-area: main;
+  min-width: 0;
+  padding: 24px;
+}
+
+.panel {
+  border: 1px solid #d7dee5;
+  border-radius: 12px;
+  background: white;
+}
+
+.session-nav {
+  padding: 16px;
+  border-bottom: 1px solid #d7dee5;
+}
+
+.session-nav ul,
+.document-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-nav li button {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: #304252;
+  background: transparent;
+  text-align: left;
+}
+
+.session-nav li button:hover,
+.session-nav li button.active {
+  background: #e7f4f1;
+}
+
+.session-nav small {
+  color: #748391;
+}
+
+.new-chat,
+.primary-button {
+  width: 100%;
+  border: 0;
+  border-radius: 9px;
+  padding: 10px 14px;
+  color: #102c2a;
+  background: #81d8c7;
+  font-weight: 700;
+}
+
+.documents-panel {
+  margin: 16px;
+  padding: 14px;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+.panel-heading h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.eyebrow {
+  margin-bottom: 4px;
+  color: #47786e;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.upload-button {
+  border: 1px solid #bfd0cd;
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: #315d56;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.upload-button input {
+  display: none;
+}
+
+.document-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid #edf0f2;
+}
+
+.document-name {
+  overflow: hidden;
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #5d6a74;
+  background: #edf1f4;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.status-ready {
+  color: #1c6858;
+  background: #dff4ed;
+}
+
+.status-failed {
+  color: #9a3030;
+  background: #fbe3e3;
+}
+
+.progress {
+  height: 5px;
+  margin-top: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7ecef;
+}
+
+.progress span {
+  display: block;
+  height: 100%;
+  background: #42a994;
+}
+
+.chat-panel {
+  display: grid;
+  height: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  grid-template-rows: 1fr auto;
+  overflow: hidden;
+}
+
+.messages {
+  overflow: auto;
+  padding: 30px;
+}
+
+.empty-state {
+  max-width: 480px;
+  margin: 14vh auto 0;
+  text-align: center;
+}
+
+.empty-state h2 {
+  font-size: 1.8rem;
+}
+
+.empty-state > p:last-child {
+  color: #687785;
+  line-height: 1.6;
+}
+
+.message {
+  max-width: 78%;
+  margin-bottom: 20px;
+}
+
+.message.user {
+  margin-left: auto;
+  border-radius: 14px 14px 3px;
+  padding: 14px 16px;
+  background: #e3f3ef;
+}
+
+.message.assistant {
+  margin-right: auto;
+}
+
+.message p {
+  margin: 5px 0 0;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.message-label {
+  color: #72808c;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.citation-chip {
+  min-width: 20px;
+  height: 20px;
+  margin: 0 2px;
+  border: 0;
+  border-radius: 999px;
+  color: #174e44;
+  background: #bce9df;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.stream-status {
+  color: #5f706e;
+  font-size: 0.88rem;
+}
+
+.composer {
+  display: grid;
+  padding: 16px;
+  border-top: 1px solid #dce2e7;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.composer textarea {
+  min-height: 54px;
+  max-height: 160px;
+  resize: vertical;
+  border: 1px solid #cbd4db;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.composer button {
+  align-self: stretch;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 20px;
+  color: #102c2a;
+  background: #81d8c7;
+  font-weight: 800;
+}
+
+.composer button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.login-screen {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 10%, #d7f2ec 0, transparent 35%),
+    #edf1f5;
+}
+
+.login-card {
+  width: min(440px, 100%);
+  border: 1px solid #d3dde3;
+  border-radius: 16px;
+  padding: 38px;
+  background: white;
+  box-shadow: 0 20px 60px #2c45541f;
+}
+
+.login-card > p:not(.eyebrow, .error-banner) {
+  color: #667581;
+  line-height: 1.6;
+}
+
+.error-banner {
+  margin: 10px 0;
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: #8b2828;
+  background: #fbe7e7;
+  font-size: 0.86rem;
+}
+
+@media (max-width: 850px) {
+  .app-shell {
+    display: block;
+  }
+
+  .topbar {
+    height: 64px;
+  }
+
+  aside {
+    max-height: 320px;
+    border-right: 0;
+    border-bottom: 1px solid #d7dee5;
+  }
+
+  .app-shell > main {
+    height: calc(100vh - 384px);
+    padding: 12px;
+  }
+}

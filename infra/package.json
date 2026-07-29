@@ -1,0 +1,21 @@
+{
+  "name": "@kb/infra",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.262.1",
+    "constructs": "^10.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.1.0",
+    "aws-cdk": "2.1133.0",
+    "esbuild": "0.25.8",
+    "ts-node": "10.9.2",
+    "typescript": "5.8.3",
+    "vitest": "3.2.4"
+  }
+}
