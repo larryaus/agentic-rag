@@ -26,7 +26,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import type { Construct } from 'constructs';
 
 export type KbApiStackProps = StackProps & {
-  frontendOrigin: string;
+  frontendOrigins: string[];
   chatModelId: string;
   documentsBucket: s3.Bucket;
   conversationsTable: dynamodb.Table;
@@ -319,7 +319,7 @@ export class KbApiStack extends Stack {
 
     const api = new apigatewayv2.HttpApi(this, 'HttpApi', {
       corsPreflight: {
-        allowOrigins: [props.frontendOrigin],
+        allowOrigins: props.frontendOrigins,
         allowMethods: [
           apigatewayv2.CorsHttpMethod.GET,
           apigatewayv2.CorsHttpMethod.POST,
@@ -386,7 +386,7 @@ export class KbApiStack extends Stack {
       authType: lambda.FunctionUrlAuthType.NONE,
       invokeMode: lambda.InvokeMode.RESPONSE_STREAM,
       cors: {
-        allowedOrigins: [props.frontendOrigin],
+        allowedOrigins: props.frontendOrigins,
         allowedMethods: [lambda.HttpMethod.POST],
         allowedHeaders: ['authorization', 'content-type'],
       },

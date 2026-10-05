@@ -3,6 +3,7 @@ import { App } from 'aws-cdk-lib';
 
 import { KbApiStack } from '../lib/api-stack';
 import { KbAuthStack } from '../lib/auth-stack';
+import { KbFrontendStack } from '../lib/frontend-stack';
 import { KbKnowledgeBaseStack } from '../lib/knowledge-base-stack';
 import { KbStorageStack } from '../lib/storage-stack';
 
@@ -29,9 +30,14 @@ if (
   );
 }
 
+// The local dev origin stays allowed alongside the hosted one so the same deployment
+// serves both `npm run -w frontend dev` and the CloudFront site.
+const frontend = new KbFrontendStack(app, 'KbFrontendStack', { env });
+const frontendOrigins = [frontendOrigin, frontend.origin];
+
 const storage = new KbStorageStack(app, 'KbStorageStack', {
   env,
-  frontendOrigin,
+  frontendOrigins,
   embeddingDimension,
 });
 const knowledgeBase = new KbKnowledgeBaseStack(
@@ -49,12 +55,12 @@ const knowledgeBase = new KbKnowledgeBaseStack(
 );
 const auth = new KbAuthStack(app, 'KbAuthStack', {
   env,
-  frontendOrigin,
+  frontendOrigins,
   cognitoDomainPrefix,
 });
 new KbApiStack(app, 'KbApiStack', {
   env,
-  frontendOrigin,
+  frontendOrigins,
   chatModelId,
   documentsBucket: storage.documentsBucket,
   conversationsTable: storage.conversationsTable,

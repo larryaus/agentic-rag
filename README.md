@@ -67,7 +67,7 @@ authorizer. HTTP API cannot stream responses, so chat uses a Lambda Function URL
 ```text
 backend/   TypeScript Lambda handlers, Bedrock agent loop, auth, storage helpers
 frontend/  React 19 + Vite single-page application
-infra/     Four AWS CDK v2 stacks: storage, knowledge base, auth, and API
+infra/     Five AWS CDK v2 stacks: frontend hosting, storage, knowledge base, auth, and API
 shared/    Type-only API and SSE contracts
 evals/     Python 3.9 golden-dataset schema scaffold (no Stage 1 eval runner)
 samples/   Three Chinese Markdown knowledge-base fixtures
@@ -81,16 +81,13 @@ samples/   Three Chinese Markdown knowledge-base fixtures
 - AWS CDK v2
 - An AWS account with Amazon Bedrock model access enabled in the target region
 
-The chat model context value is a regional cross-region inference-profile ID. Confirm an
-available Anthropic profile before deployment:
-
-```bash
-aws bedrock list-inference-profiles --region <region> \
-  --query "inferenceProfileSummaries[?contains(inferenceProfileId,'anthropic')].inferenceProfileId"
-```
-
-Update `chatModelId` in `infra/cdk.json` or pass `-c chatModelId=...`. Model IDs are CDK
-context values and are never hardcoded in Lambda source.
+The chat model context value is a regional cross-region inference-profile ID, and a
+profile being listed does not mean the account may invoke it. The default,
+`au.anthropic.claude-sonnet-4-6`, is the one verified to answer for the Sydney
+(`ap-southeast-2`) deployment. For another region or model, confirm it responds in the
+Bedrock console playground first, then update `chatModelId` in `infra/cdk.json` or pass
+`-c chatModelId=...`. Model IDs are CDK context values and are never hardcoded in Lambda
+source.
 
 `esbuild` is an intentional pinned direct dependency at both the root and in `infra/`.
 `NodejsFunction` otherwise falls back to Docker bundling during synth when it cannot
@@ -117,21 +114,21 @@ frontend production build, the infrastructure build and offline CDK synth, then 
 Python 3.9 dataset tests. Tests mock every AWS SDK call and do not resolve AWS
 credentials.
 
-For local browser development, copy `.env.example` to `frontend/.env`, fill in the six
-values from a deployed stack, and run:
+For browser development with no AWS account, keep the mock configuration in
+`frontend/.env.mock` and run the UI against the local mock server:
 
 ```bash
-npm run -w frontend dev
+npm run dev:mock
 ```
 
 ## Deployment
 
-Deployment is intentionally manual in Stage 1. Review the synthesized templates first,
-then run these commands from an authenticated AWS environment:
+Deployment is manual. Review the synthesized templates first, then run these commands
+from an authenticated AWS environment:
 
 ```bash
 npx -w infra cdk bootstrap
-npx -w infra cdk deploy --all
+npx -w infra cdk deploy --all --outputs-file cdk-outputs.json
 
 aws cognito-idp admin-create-user \
   --user-pool-id <user-pool-id> \
@@ -139,20 +136,22 @@ aws cognito-idp admin-create-user \
   --user-attributes Name=email,Value=<email> Name=email_verified,Value=true
 ```
 
-Copy `.env.example` to `frontend/.env` and populate it with the CDK outputs and Cognito
-domain:
+Self-sign-up is disabled, so only users created this way can log in. The deployment
+allows two frontend origins: the CloudFront site it creates and the local dev origin from
+`frontendOrigin` (default `http://localhost:5173`).
 
-```text
-VITE_USER_POOL_ID
-VITE_USER_POOL_CLIENT_ID
-VITE_COGNITO_DOMAIN
-VITE_API_URL
-VITE_CHAT_URL
-VITE_AWS_REGION
+Run the UI locally against the deployed backend:
+
+```bash
+npm run frontend:env        # writes frontend/.env from infra/cdk-outputs.json
+npm run -w frontend dev     # must serve on the frontendOrigin port
 ```
 
-Then build and host `frontend/dist/` on the origin configured by
-`frontendOrigin`. The default origin is `http://localhost:5173`.
+Publish it to the CloudFront site (`KbFrontendStack.FrontendUrl`):
+
+```bash
+npm run frontend:publish    # .env + build + S3 upload + cache invalidation
+```
 
 ## Security model
 

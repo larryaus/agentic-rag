@@ -10,7 +10,7 @@ import {
 import type { Construct } from 'constructs';
 
 export type KbStorageStackProps = StackProps & {
-  frontendOrigin: string;
+  frontendOrigins: string[];
   embeddingDimension: number;
 };
 
@@ -44,7 +44,7 @@ export class KbStorageStack extends Stack {
       autoDeleteObjects: true,
       cors: [
         {
-          allowedOrigins: [props.frontendOrigin],
+          allowedOrigins: props.frontendOrigins,
           allowedMethods: [s3.HttpMethods.PUT],
           allowedHeaders: ['*'],
         },
