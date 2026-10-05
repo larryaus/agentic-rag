@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Install the evaluation test environment
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -e './evals[test]'
+      # Typecheck, lint, tests, frontend build, offline cdk synth, and the Python
+      # dataset tests. None of it needs AWS credentials.
+      - run: npm run verify
+
+  publish-frontend:
+    name: Publish frontend
+    needs: verify
+    # Runs only for pushes to main, and only where a publish role is configured, so
+    # forks and clones without AWS access skip it instead of failing.
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      vars.AWS_PUBLISH_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: publish-frontend
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Short-lived credentials through GitHub's OIDC token; the repository stores no
+      # AWS keys. The role (KbFrontendStack) trusts only this repository's main branch.
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Build and publish to CloudFront
+        run: node tools/publish-frontend.mjs --from-stacks

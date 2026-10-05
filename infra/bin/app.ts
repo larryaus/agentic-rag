@@ -22,6 +22,7 @@ const embeddingModelId = app.node.getContext('embeddingModelId') as string;
 const embeddingDimension = Number(app.node.getContext('embeddingDimension'));
 const chatModelId = app.node.getContext('chatModelId') as string;
 const budgetAlertEmail = app.node.getContext('budgetAlertEmail') as string;
+const githubRepository = app.node.getContext('githubRepository') as string;
 const monthlyBudgetUsd = Number(app.node.getContext('monthlyBudgetUsd'));
 
 if (
@@ -35,7 +36,11 @@ if (
 
 // The local dev origin stays allowed alongside the hosted one so the same deployment
 // serves both `npm run -w frontend dev` and the CloudFront site.
-const frontend = new KbFrontendStack(app, 'KbFrontendStack', { env });
+const frontend = new KbFrontendStack(app, 'KbFrontendStack', {
+  env,
+  githubRepository,
+  outputStacks: ['KbAuthStack', 'KbApiStack', 'KbFrontendStack'],
+});
 const frontendOrigins = [frontendOrigin, frontend.origin];
 
 const storage = new KbStorageStack(app, 'KbStorageStack', {
