@@ -12,7 +12,9 @@
     "@kb/shared": "1.0.0",
     "aws-jwt-verify": "5.1.0",
     "react": "19.1.1",
-    "react-dom": "19.1.1"
+    "react-dom": "19.1.1",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
     "@types/react": "19.1.9",

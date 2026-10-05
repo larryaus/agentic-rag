@@ -9,7 +9,7 @@ import {
 import type { Construct } from 'constructs';
 
 export type KbAuthStackProps = StackProps & {
-  frontendOrigin: string;
+  frontendOrigins: string[];
   cognitoDomainPrefix: string;
 };
 
@@ -70,8 +70,10 @@ export class KbAuthStack extends Stack {
           cognito.OAuthScope.PROFILE,
           cognito.OAuthScope.resourceServer(resourceServer, accessScope),
         ],
-        callbackUrls: [`${props.frontendOrigin}/callback`],
-        logoutUrls: [props.frontendOrigin],
+        callbackUrls: props.frontendOrigins.map(
+          (origin) => `${origin}/callback`,
+        ),
+        logoutUrls: props.frontendOrigins,
       },
       accessTokenValidity: Duration.hours(1),
       idTokenValidity: Duration.hours(1),

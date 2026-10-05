@@ -108,6 +108,20 @@ export function DocumentPanel(props: {
     }
   };
 
+  const remove = async (document: DocumentSummary): Promise<void> => {
+    setError(undefined);
+    try {
+      await apiFetch(
+        props.config,
+        `/v1/documents/${encodeURIComponent(document.documentId)}`,
+        { method: 'DELETE' },
+      );
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not remove document');
+    }
+  };
+
   return (
     <section className="panel documents-panel">
       <div className="panel-heading">
@@ -141,6 +155,17 @@ export function DocumentPanel(props: {
             <span className={`status status-${document.status.toLowerCase()}`}>
               {document.status}
             </span>
+            {document.status === 'FAILED' ? (
+              <button
+                type="button"
+                className="document-remove"
+                aria-label={`Remove ${document.title}`}
+                title="Remove failed document"
+                onClick={() => void remove(document)}
+              >
+                ×
+              </button>
+            ) : null}
           </li>
         ))}
       </ul>

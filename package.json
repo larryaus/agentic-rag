@@ -15,7 +15,9 @@
     "test": "vitest run",
     "verify": "npm run typecheck && npm run lint && npm test && npm run -w frontend build && npm run -w infra build && npx -w infra cdk synth && .venv/bin/python -m pytest -q evals/tests",
     "mock": "node tools/mock-server.mjs",
-    "dev:mock": "node tools/mock-server.mjs & npm run -w frontend dev"
+    "dev:mock": "node tools/mock-server.mjs & npm run -w frontend dev -- --mode mock",
+    "frontend:env": "node tools/publish-frontend.mjs --env-only",
+    "frontend:publish": "node tools/publish-frontend.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.32.0",

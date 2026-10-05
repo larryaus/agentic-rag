@@ -1,4 +1,8 @@
 .env
+.env.*
+!.env.example
+!.env.mock
+cdk-outputs.json
 __pycache__/
 *.pyc
 *.pyo
@@ -17,3 +21,4 @@ coverage/
 
 # Claude Code local worktree copies — never commit
 .claude/worktrees/
+node_modules
