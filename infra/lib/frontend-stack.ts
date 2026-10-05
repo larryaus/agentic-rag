@@ -6,14 +6,28 @@ import {
   type StackProps,
   aws_cloudfront as cloudfront,
   aws_cloudfront_origins as origins,
+  aws_iam as iam,
   aws_s3 as s3,
 } from 'aws-cdk-lib';
 import type { Construct } from 'constructs';
 
+const GITHUB_OIDC_HOST = 'token.actions.githubusercontent.com';
+
+export type KbFrontendStackProps = StackProps & {
+  /** `owner/name` of the GitHub repository whose CI may publish the site. */
+  githubRepository?: string;
+  /** Stacks whose outputs the publish job reads to build the frontend. */
+  outputStacks?: string[];
+};
+
 export class KbFrontendStack extends Stack {
   public readonly origin: string;
 
-  public constructor(scope: Construct, id: string, props: StackProps) {
+  public constructor(
+    scope: Construct,
+    id: string,
+    props: KbFrontendStackProps = {},
+  ) {
     super(scope, id, props);
 
     // S3-managed encryption rather than the shared KMS key: the bundle is public by
@@ -56,5 +70,55 @@ export class KbFrontendStack extends Stack {
     new CfnOutput(this, 'DistributionId', {
       value: distribution.distributionId,
     });
+
+    if (props.githubRepository !== undefined && props.githubRepository !== '') {
+      // GitHub Actions exchanges a short-lived OIDC token for this role, so the
+      // repository holds no AWS keys. The subject condition is the access control:
+      // only workflow runs on this repository's main branch match it, which excludes
+      // pull requests and forks.
+      const github = new iam.OidcProviderNative(this, 'GithubOidc', {
+        url: `https://${GITHUB_OIDC_HOST}`,
+        clientIds: ['sts.amazonaws.com'],
+      });
+      const publishRole = new iam.Role(this, 'PublishRole', {
+        roleName: 'kb-assistant-github-publish',
+        assumedBy: new iam.WebIdentityPrincipal(github.oidcProviderArn, {
+          StringEquals: {
+            [`${GITHUB_OIDC_HOST}:aud`]: 'sts.amazonaws.com',
+            [`${GITHUB_OIDC_HOST}:sub`]: `repo:${props.githubRepository}:ref:refs/heads/main`,
+          },
+        }),
+      });
+      publishRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ['s3:ListBucket'],
+          resources: [siteBucket.bucketArn],
+        }),
+      );
+      publishRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ['s3:PutObject', 's3:DeleteObject'],
+          resources: [`${siteBucket.bucketArn}/*`],
+        }),
+      );
+      publishRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ['cloudfront:CreateInvalidation'],
+          resources: [
+            `arn:${this.partition}:cloudfront::${this.account}:distribution/${distribution.distributionId}`,
+          ],
+        }),
+      );
+      publishRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ['cloudformation:DescribeStacks'],
+          resources: (props.outputStacks ?? []).map(
+            (name) =>
+              `arn:${this.partition}:cloudformation:${this.region}:${this.account}:stack/${name}/*`,
+          ),
+        }),
+      );
+      new CfnOutput(this, 'PublishRoleArn', { value: publishRole.roleArn });
+    }
   }
 }

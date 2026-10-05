@@ -69,7 +69,7 @@ Ask me for a demo account and I will create one for you.
 | Data protection | KMS customer-managed key, private S3, scoped IAM | Encryption at rest, least privilege per Lambda |
 | State | DynamoDB single-table design | Per-user ownership checks, TTL, pagination |
 | Operations | CloudWatch Logs and alarms, X-Ray, AWS Budgets | Tracing, error alarms, a spend alert |
-| Delivery | AWS CDK v2 (six stacks), CloudFront | Infrastructure as code, offline synth in the test gate |
+| Delivery | AWS CDK v2 (six stacks), CloudFront, GitHub Actions | Infrastructure as code, CI with keyless publishing through OIDC |
 
 ## Design decisions
 
@@ -140,6 +140,17 @@ npm run verify
 production frontend build, an offline `cdk synth`, and the Python dataset tests. No test
 needs AWS credentials.
 
+## Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs `npm run verify` on every pull request
+and every push to `main`. After a push to `main` passes, a second job rebuilds the
+frontend against the deployed stacks' outputs and publishes it to CloudFront.
+
+The publish job holds no AWS keys. It exchanges GitHub's OIDC token for a short-lived
+IAM role that trusts only this repository's `main` branch and can do three things: write
+to the site bucket, invalidate the distribution, and read the stack outputs.
+Infrastructure changes are still deployed by hand with `cdk deploy`.
+
 ## Repository layout
 
 ```text
@@ -185,6 +196,11 @@ aws cognito-idp admin-create-user \
 npm run frontend:publish    # builds the UI and publishes it to CloudFront
 ```
 
+To let CI publish the frontend from your own fork, set `githubRepository` in
+`infra/cdk.json` to `owner/name` before deploying, then add two repository variables:
+`AWS_PUBLISH_ROLE_ARN` (the `PublishRoleArn` output) and `AWS_REGION`. Leave
+`githubRepository` empty to create no CI access at all.
+
 `budgetAlertEmail` is optional. When set, it creates an AWS Budget that emails at 80% and
 100% of `monthlyBudgetUsd` (default 10) and when the forecast passes the limit. It is an
 alert on whole-account spend, not a cap.
@@ -221,4 +237,4 @@ Not built yet, with the hooks already in place:
 - A human-approval step for sensitive actions
 - Token, latency and cost dashboards
 - A regression runner over the golden dataset in `evals/`
-- CI/CD, WAF and a custom domain
+- Automated infrastructure deploys, WAF and a custom domain

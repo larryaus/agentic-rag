@@ -535,4 +535,57 @@ describe('CDK stacks', () => {
       ],
     });
   });
+
+  it('lets only main-branch GitHub Actions runs of the repository publish the frontend', () => {
+    const template = Template.fromStack(
+      new KbFrontendStack(new App(), 'FrontendCi', {
+        env,
+        githubRepository: 'octo/kb',
+        outputStacks: ['KbAuthStack', 'KbApiStack', 'KbFrontendStack'],
+      }),
+    );
+    template.hasResourceProperties('AWS::IAM::OIDCProvider', {
+      Url: 'https://token.actions.githubusercontent.com',
+      ClientIdList: ['sts.amazonaws.com'],
+    });
+    template.hasResourceProperties('AWS::IAM::Role', {
+      RoleName: 'kb-assistant-github-publish',
+      AssumeRolePolicyDocument: Match.objectLike({
+        Statement: [
+          Match.objectLike({
+            Action: 'sts:AssumeRoleWithWebIdentity',
+            Condition: {
+              StringEquals: {
+                'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
+                'token.actions.githubusercontent.com:sub':
+                  'repo:octo/kb:ref:refs/heads/main',
+              },
+            },
+          }),
+        ],
+      }),
+    });
+    expect([...actionsForRole(template, 'PublishRole')].sort()).toEqual([
+      'cloudformation:DescribeStacks',
+      'cloudfront:CreateInvalidation',
+      's3:DeleteObject',
+      's3:ListBucket',
+      's3:PutObject',
+    ]);
+    for (const statement of statements(template)) {
+      expect(JSON.stringify(statement.Resource)).not.toBe('"*"');
+    }
+  });
+
+  it('creates no CI access unless a repository is configured', () => {
+    const template = Template.fromStack(
+      new KbFrontendStack(new App(), 'FrontendNoCi', { env }),
+    );
+    template.resourceCountIs('AWS::IAM::OIDCProvider', 0);
+    expect(
+      Object.keys(template.findResources('AWS::IAM::Role')).filter((id) =>
+        id.startsWith('PublishRole'),
+      ),
+    ).toHaveLength(0);
+  });
 });
