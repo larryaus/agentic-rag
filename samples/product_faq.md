@@ -1,55 +1,55 @@
-# 产品常见问题（FAQ）
+# Product FAQ
 
-## 注册与账号
+## Sign-up and Accounts
 
-### 1. 如何注册账号？
-访问官网首页 → 点击「免费试用」→ 输入企业邮箱与公司名 → 邮箱验证后即可登录。
-个人邮箱（如 gmail / qq）目前不支持注册。
+### 1. How do I create an account?
+Go to the website home page → click "Free trial" → enter your work email and company name → verify your email, then sign in.
+Personal email addresses (such as Gmail or QQ Mail) are not currently accepted for sign-up.
 
-### 2. 一个账号可以多人共用吗？
-不建议。我们按席位计费，每位实际使用者应使用独立账号，避免会话历史与权限冲突。
-管理员可在「成员管理」中批量邀请同事。
+### 2. Can several people share one account?
+We do not recommend it. Billing is per seat, and each person who uses the product should have their own account to avoid conflicts in conversation history and permissions.
+Administrators can invite colleagues in bulk under "Member management".
 
-## 计费与订阅
+## Billing and Subscriptions
 
-### 3. 有哪些版本？
-- **Starter**：免费，月度对话上限 200 次，单文件上传 10 MB。
-- **Pro**：299 元/席位/月，无对话上限，单文件 25 MB，开放 API。
-- **Enterprise**：联系销售，支持私有化部署、SSO、审计日志。
+### 3. Which plans are available?
+- **Starter**: free, up to 200 conversations per month, 10 MB per uploaded file.
+- **Pro**: CNY 299 per seat per month, unlimited conversations, 25 MB per file, API access.
+- **Enterprise**: contact sales. Supports private deployment, SSO and audit logs.
 
-### 4. 支持哪些支付方式？
-支持微信、支付宝、对公转账。开发票请在订单完成后 7 个工作日内在「账单」页提交开票申请。
+### 4. Which payment methods are supported?
+WeChat Pay, Alipay and bank transfer. To get an invoice, submit an invoice request on the "Billing" page within 7 working days of completing the order.
 
-### 5. 可以中途升级吗？
-可以。升级即时生效，按剩余天数补差价；降级在下一个计费周期生效。
+### 5. Can I upgrade part-way through a billing period?
+Yes. An upgrade takes effect immediately and you pay the difference for the remaining days. A downgrade takes effect at the start of the next billing period.
 
-## 数据安全
+## Data Security
 
-### 6. 我上传的文档会被用来训练模型吗？
-不会。所有用户数据仅用于为该用户提供服务，受加密存储保护，离开你的工作空间需要管理员显式授权。
+### 6. Will the documents I upload be used to train models?
+No. All user data is used only to provide the service to that user and is protected by encrypted storage. Data leaves your workspace only with explicit authorization from an administrator.
 
-### 7. 数据存储在哪里？
-默认存储于阿里云华东 1（杭州）区域；Enterprise 客户可选择华北 2（北京）或私有化部署。
+### 7. Where is my data stored?
+By default in the Alibaba Cloud East China 1 (Hangzhou) region. Enterprise customers can choose North China 2 (Beijing) or a private deployment.
 
-### 8. 是否支持数据导出与删除？
-- 在「设置 → 数据」可一键导出所有对话记录与已上传文档（zip 格式）。
-- 删除账号将在 30 天宽限期后永久清除全部数据，期间可申诉恢复。
+### 8. Can I export and delete my data?
+- Under "Settings → Data" you can export all conversation history and uploaded documents in one step (as a zip file).
+- Deleting an account permanently erases all of its data after a 30-day grace period, during which you can request that it be restored.
 
-## 技术问题
+## Technical Questions
 
-### 9. 上传文件失败怎么办？
-检查：
-1. 文件格式（支持 PDF / Markdown / TXT / HTML）；
-2. 文件大小（Starter 10 MB，Pro 25 MB）；
-3. 网络稳定性。
-仍无法上传请联系 support@example.com 并附带请求 ID。
+### 9. What should I do if a file upload fails?
+Check:
+1. The file format (PDF, Markdown, TXT and HTML are supported);
+2. The file size (10 MB on Starter, 25 MB on Pro);
+3. The stability of your network connection.
+If the upload still fails, contact support@example.com and include the request ID.
 
-### 10. API 请求频率限制？
-- Starter 不开放 API。
-- Pro：60 RPM、10000 tokens/分钟。
-- Enterprise：可定制配额。
+### 10. What are the API rate limits?
+- Starter does not include API access.
+- Pro: 60 RPM and 10,000 tokens per minute.
+- Enterprise: quotas can be customized.
 
-## 其他
+## Other
 
-### 11. 客服服务时间？
-工作日 09:00 - 21:00，节假日休息。Enterprise 客户享有 7×24 专属支持。
+### 11. What are the customer support hours?
+Working days from 09:00 to 21:00; closed on public holidays. Enterprise customers have dedicated 24/7 support.
