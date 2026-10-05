@@ -157,19 +157,39 @@ export async function loadRecentHistory(opts: {
     }),
   );
   // DynamoDB returns newest-first; Bedrock history must be chronological.
-  return ((output.Items ?? []) as MessageItem[])
-    .reverse()
-    .map((item) => ({
-      role: item.role,
-      content: [
-        {
-          text:
-            item.role === 'assistant'
-              ? item.content.replace(CITATION_RE, '')
-              : item.content,
-        },
-      ],
-    }));
+  return toConverseHistory(((output.Items ?? []) as MessageItem[]).reverse());
+}
+
+/**
+ * Converse rejects history that does not start with a user turn, alternate roles, or
+ * that holds a blank text block. Stored history can break all three: a turn that timed
+ * out leaves a question with no answer, a stream that failed before any text leaves an
+ * empty answer, and the query window can open on an answer. Only complete
+ * question-and-answer pairs are kept, so the caller can always append the next question.
+ */
+export function toConverseHistory(items: readonly MessageItem[]): Message[] {
+  const history: Message[] = [];
+  let question: string | undefined;
+  for (const item of items) {
+    const text = (
+      item.role === 'assistant'
+        ? item.content.replace(CITATION_RE, '')
+        : item.content
+    ).trim();
+    if (item.role === 'user') {
+      // A later question supersedes one that was never answered.
+      question = text === '' ? undefined : text;
+      continue;
+    }
+    if (question !== undefined && text !== '') {
+      history.push(
+        { role: 'user', content: [{ text: question }] },
+        { role: 'assistant', content: [{ text }] },
+      );
+    }
+    question = undefined;
+  }
+  return history;
 }
 
 export function makeMessageItem(opts: {

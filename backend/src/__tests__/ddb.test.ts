@@ -14,10 +14,12 @@ import {
   encodePageToken,
   loadRecentHistory,
   makeMessageItem,
+  type MessageItem,
   persistCompletedTurn,
   persistSubmittedMessage,
   sessionGsiPk,
   sessionPk,
+  toConverseHistory,
 } from '../lib/ddb';
 import { ValidationError } from '../lib/errors';
 
@@ -74,16 +76,10 @@ describe('DynamoDB model', () => {
     ddb.reset();
     ddb.on(QueryCommand).resolves({
       Items: [
-        {
-          role: 'user',
-          content: 'second question',
-          citations: [],
-        },
-        {
-          role: 'assistant',
-          content: 'first answer [ref:1]',
-          citations: [],
-        },
+        { role: 'assistant', content: 'second answer [ref:2]', citations: [] },
+        { role: 'user', content: 'second question', citations: [] },
+        { role: 'assistant', content: 'first answer [ref:1]', citations: [] },
+        { role: 'user', content: 'first question', citations: [] },
       ],
     });
 
@@ -94,8 +90,10 @@ describe('DynamoDB model', () => {
     });
 
     expect(history).toEqual([
-      { role: 'assistant', content: [{ text: 'first answer ' }] },
+      { role: 'user', content: [{ text: 'first question' }] },
+      { role: 'assistant', content: [{ text: 'first answer' }] },
       { role: 'user', content: [{ text: 'second question' }] },
+      { role: 'assistant', content: [{ text: 'second answer' }] },
     ]);
     expect(ddb.commandCalls(QueryCommand)[0]?.args[0].input).toEqual(
       expect.objectContaining({
@@ -103,6 +101,43 @@ describe('DynamoDB model', () => {
         Limit: 20,
       }),
     );
+  });
+
+  it('keeps only complete pairs so Converse accepts the history', () => {
+    const item = (
+      role: 'user' | 'assistant',
+      content: string,
+    ): MessageItem =>
+      makeMessageItem({
+        sessionId: 'session',
+        userSub: 'user',
+        role,
+        content,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        ttl: 123,
+      });
+
+    expect(
+      toConverseHistory([
+        // The window opened on an answer whose question fell outside it.
+        item('assistant', 'orphaned answer'),
+        // A turn that timed out before its answer was stored.
+        item('user', 'unanswered question'),
+        item('user', 'answered question'),
+        item('assistant', 'answer [ref:1]'),
+        // A stream that failed before any text was produced.
+        item('user', 'question with blank answer'),
+        item('assistant', '  '),
+        // The answer was a citation marker and nothing else.
+        item('user', 'question with marker-only answer'),
+        item('assistant', '[ref:3]'),
+        // A trailing question the caller would follow with another user turn.
+        item('user', 'trailing question'),
+      ]),
+    ).toEqual([
+      { role: 'user', content: [{ text: 'answered question' }] },
+      { role: 'assistant', content: [{ text: 'answer' }] },
+    ]);
   });
 
   it('creates session metadata conditionally before messages can be written', async () => {

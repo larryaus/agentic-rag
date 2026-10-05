@@ -40,6 +40,7 @@ type ToolBlockState = {
   name: string;
   inputJson: string;
   input?: JsonObject;
+  inputError?: string;
 };
 type BlockState = TextBlockState | ToolBlockState;
 
@@ -51,6 +52,24 @@ function asObject(value: unknown): JsonObject {
     throw new Error('Tool input must be a JSON object');
   }
   return value as JsonObject;
+}
+
+/**
+ * Bad tool input is the model's mistake, so it goes back to the model as a tool error it
+ * can correct instead of failing the whole turn. A tool called with no arguments streams
+ * no input deltas at all.
+ */
+function parseToolInput(block: ToolBlockState): void {
+  if (block.inputJson.trim() === '') {
+    block.input = {};
+    return;
+  }
+  try {
+    block.input = asObject(JSON.parse(block.inputJson) as unknown);
+  } catch (error) {
+    block.input = {};
+    block.inputError = `Tool input was not a valid JSON object: ${errorMessage(error)}`;
+  }
 }
 
 function streamExceptionName(event: object): string | undefined {
@@ -103,6 +122,9 @@ async function dispatchTool(opts: {
   const input = opts.block.input ?? {};
   opts.emit({ type: 'tool_use', name: opts.block.name, input });
   try {
+    if (opts.block.inputError !== undefined) {
+      throw new Error(opts.block.inputError);
+    }
     if (opts.block.name !== 'search_knowledge_base') {
       throw new Error(`Unknown tool: ${opts.block.name}`);
     }
@@ -229,7 +251,7 @@ export async function runAgent(opts: {
         const index = requireBlockIndex(stopped.contentBlockIndex);
         const block = blocks.get(index);
         if (block?.kind === 'tool') {
-          block.input = asObject(JSON.parse(block.inputJson) as unknown);
+          parseToolInput(block);
         }
       }
 
