@@ -3,6 +3,7 @@ import { App } from 'aws-cdk-lib';
 
 import { KbApiStack } from '../lib/api-stack';
 import { KbAuthStack } from '../lib/auth-stack';
+import { KbBudgetStack } from '../lib/budget-stack';
 import { KbFrontendStack } from '../lib/frontend-stack';
 import { KbKnowledgeBaseStack } from '../lib/knowledge-base-stack';
 import { KbStorageStack } from '../lib/storage-stack';
@@ -20,6 +21,8 @@ const cognitoDomainPrefix = app.node.getContext(
 const embeddingModelId = app.node.getContext('embeddingModelId') as string;
 const embeddingDimension = Number(app.node.getContext('embeddingDimension'));
 const chatModelId = app.node.getContext('chatModelId') as string;
+const budgetAlertEmail = app.node.getContext('budgetAlertEmail') as string;
+const monthlyBudgetUsd = Number(app.node.getContext('monthlyBudgetUsd'));
 
 if (
   embeddingModelId === 'amazon.titan-embed-text-v2:0' &&
@@ -70,3 +73,13 @@ new KbApiStack(app, 'KbApiStack', {
   userPool: auth.userPool,
   userPoolClient: auth.userPoolClient,
 });
+
+// The address is supplied at deploy time (-c budgetAlertEmail=...) so it never has to
+// be committed. Without it the stack is simply not part of the app.
+if (budgetAlertEmail.trim() !== '') {
+  new KbBudgetStack(app, 'KbBudgetStack', {
+    env,
+    alertEmail: budgetAlertEmail.trim(),
+    monthlyLimitUsd: monthlyBudgetUsd,
+  });
+}

@@ -216,9 +216,14 @@ export class KbApiStack extends Stack {
       }),
     );
 
+    // Direct ingestion authorizes against StartIngestionJob as well as its own action;
+    // without both, Bedrock rejects IngestKnowledgeBaseDocuments with AccessDenied.
     ingest.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['bedrock:IngestKnowledgeBaseDocuments'],
+        actions: [
+          'bedrock:IngestKnowledgeBaseDocuments',
+          'bedrock:StartIngestionJob',
+        ],
         resources: [knowledgeBaseArn],
       }),
     );
@@ -293,7 +298,13 @@ export class KbApiStack extends Stack {
     );
     documents.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['s3:GetObject'],
+        actions: ['dynamodb:DeleteItem'],
+        resources: [props.conversationsTable.tableArn],
+      }),
+    );
+    documents.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:GetObject', 's3:DeleteObject'],
         resources: [uploadObjects],
       }),
     );
@@ -323,6 +334,7 @@ export class KbApiStack extends Stack {
         allowMethods: [
           apigatewayv2.CorsHttpMethod.GET,
           apigatewayv2.CorsHttpMethod.POST,
+          apigatewayv2.CorsHttpMethod.DELETE,
           apigatewayv2.CorsHttpMethod.OPTIONS,
         ],
         allowHeaders: ['authorization', 'content-type'],
@@ -357,6 +369,15 @@ export class KbApiStack extends Stack {
       methods: [apigatewayv2.HttpMethod.GET],
       integration: new HttpLambdaIntegration(
         'DocumentsDownloadIntegration',
+        documents,
+      ),
+      ...routeOptions,
+    });
+    api.addRoutes({
+      path: '/v1/documents/{documentId}',
+      methods: [apigatewayv2.HttpMethod.DELETE],
+      integration: new HttpLambdaIntegration(
+        'DocumentsRemoveIntegration',
         documents,
       ),
       ...routeOptions,

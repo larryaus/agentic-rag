@@ -1,7 +1,10 @@
 import type { Citation } from '@kb/shared';
 import type { ReactNode } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const MARKER = /\[ref:(\d+)\]/g;
+const CITATION_HREF = '#citation-';
 
 export function CitationText(props: {
   text: string;
@@ -11,34 +14,47 @@ export function CitationText(props: {
   const byRef = new Map(
     props.citations.map((citation) => [citation.ref, citation]),
   );
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-  for (const match of props.text.matchAll(MARKER)) {
-    const full = match[0];
-    const rawRef = match[1];
-    const index = match.index;
-    if (rawRef === undefined) continue;
-    nodes.push(props.text.slice(cursor, index));
-    const citation = byRef.get(Number(rawRef));
-    if (citation === undefined) {
-      nodes.push(full);
-    } else {
-      nodes.push(
-        <sup key={`${index}-${rawRef}`}>
-          <button
-            type="button"
-            className="citation-chip"
-            title={`${citation.title}: ${citation.snippet}`}
-            aria-label={`Open citation ${rawRef}`}
-            onClick={() => props.onOpen(citation)}
-          >
-            {rawRef}
-          </button>
-        </sup>,
-      );
-    }
-    cursor = index + full.length;
-  }
-  nodes.push(props.text.slice(cursor));
-  return nodes;
+  // Known markers become links so the Markdown parser carries them through as inline
+  // nodes wherever they appear. Unknown markers are left alone and render literally.
+  const source = props.text.replace(MARKER, (full, rawRef: string) =>
+    byRef.has(Number(rawRef)) ? `[${rawRef}](${CITATION_HREF}${rawRef})` : full,
+  );
+
+  return (
+    <div className="markdown">
+      {/* Raw HTML in model output stays inert: react-markdown renders it as text. */}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ href, children }) => {
+            const citation = href?.startsWith(CITATION_HREF)
+              ? byRef.get(Number(href.slice(CITATION_HREF.length)))
+              : undefined;
+            if (citation === undefined) {
+              return (
+                <a href={href} target="_blank" rel="noopener noreferrer">
+                  {children}
+                </a>
+              );
+            }
+            return (
+              <sup>
+                <button
+                  type="button"
+                  className="citation-chip"
+                  title={`${citation.title}: ${citation.snippet}`}
+                  aria-label={`Open citation ${citation.ref}`}
+                  onClick={() => props.onOpen(citation)}
+                >
+                  {citation.ref}
+                </button>
+              </sup>
+            );
+          },
+        }}
+      >
+        {source}
+      </ReactMarkdown>
+    </div>
+  );
 }

@@ -66,7 +66,7 @@ const CORPUS = [
 function cors(res) {
   res.setHeader('access-control-allow-origin', '*');
   res.setHeader('access-control-allow-headers', 'authorization,content-type,if-none-match');
-  res.setHeader('access-control-allow-methods', 'GET,POST,PUT,OPTIONS');
+  res.setHeader('access-control-allow-methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.setHeader('access-control-expose-headers', 'etag');
 }
 
@@ -169,9 +169,10 @@ const server = createServer(async (req, res) => {
       if (doc) {
         doc.sizeBytes = body.length;
         doc.status = 'INGESTING';
-        // Mimic Bedrock ingestion latency, then reach a terminal state.
+        // Mimic Bedrock ingestion latency, then reach a terminal state. A filename
+        // containing "fail" ends FAILED so the removal flow can be exercised.
         setTimeout(() => {
-          doc.status = 'READY';
+          doc.status = /fail/i.test(doc.title) ? 'FAILED' : 'READY';
           doc.updatedAt = new Date().toISOString();
         }, 2500);
       }
@@ -224,6 +225,20 @@ const server = createServer(async (req, res) => {
   if (dl) {
     if (!documents.has(dl[1])) return json(res, 404, { message: 'not found' });
     return json(res, 200, { url: `${ORIGIN}/s3-get/${dl[1]}` });
+  }
+
+  // --- HTTP API: remove a failed document ----------------------------------
+  const removal = path.match(/^\/v1\/documents\/([^/]+)$/);
+  if (removal && req.method === 'DELETE') {
+    const doc = documents.get(decodeURIComponent(removal[1]));
+    if (!doc) return json(res, 404, { message: 'Document not found' });
+    if (doc.status !== 'FAILED') {
+      return json(res, 409, { message: 'Only failed documents can be removed' });
+    }
+    documents.delete(doc.documentId);
+    cors(res);
+    res.writeHead(204);
+    return res.end();
   }
 
   // --- HTTP API: list documents --------------------------------------------
@@ -299,9 +314,11 @@ const server = createServer(async (req, res) => {
       await wait(90);
     }
 
+    // Shaped like real model output (bold, a list, inline markers) so the UI's
+    // Markdown rendering is exercised.
     const answer =
-      `根据知识库中的资料：${hits[0].doc.text} [ref:1]` +
-      (citations.length > 1 ? ` 另外，${hits[1].doc.text} [ref:2]` : '') +
+      `**根据知识库中的资料：**\n\n- ${hits[0].doc.text} [ref:1]` +
+      (citations.length > 1 ? `\n- ${hits[1].doc.text} [ref:2]` : '') +
       `\n\n（这是本地 mock 服务返回的回答，未调用 Amazon Bedrock。）`;
 
     // Stream in small chunks so the UI's incremental rendering is exercised,

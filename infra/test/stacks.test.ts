@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { KbApiStack } from '../lib/api-stack';
 import { KbAuthStack } from '../lib/auth-stack';
+import { KbBudgetStack } from '../lib/budget-stack';
 import { KbFrontendStack } from '../lib/frontend-stack';
 import { KbKnowledgeBaseStack } from '../lib/knowledge-base-stack';
 import { KbStorageStack } from '../lib/storage-stack';
@@ -143,6 +144,13 @@ describe('CDK stacks', () => {
     template.hasResourceProperties('AWS::S3Vectors::Index', {
       Dimension: 1024,
       DistanceMetric: 'cosine',
+      // Without these, chunks over 2 KB cannot be stored and ingestion fails.
+      MetadataConfiguration: {
+        NonFilterableMetadataKeys: [
+          'AMAZON_BEDROCK_TEXT',
+          'AMAZON_BEDROCK_METADATA',
+        ],
+      },
     });
   });
 
@@ -188,7 +196,18 @@ describe('CDK stacks', () => {
       expect(variables).not.toHaveProperty('AWS_REGION');
     }
     const routes = template.findResources('AWS::ApiGatewayV2::Route');
-    expect(Object.values(routes)).toHaveLength(5);
+    expect(Object.values(routes)).toHaveLength(6);
+    expect(
+      Object.values(routes).map(
+        (resource) => (resource.Properties as { RouteKey: string }).RouteKey,
+      ),
+    ).toContain('DELETE /v1/documents/{documentId}');
+    // A browser preflights DELETE, so the route is unreachable without this.
+    template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
+      CorsConfiguration: Match.objectLike({
+        AllowMethods: Match.arrayWith(['DELETE']),
+      }),
+    });
     Object.values(routes).forEach((resource) => {
       expect(resource.Properties).toEqual(
         expect.objectContaining({
@@ -235,9 +254,10 @@ describe('CDK stacks', () => {
     );
   });
 
-  it('never grants obsolete ingestion-job APIs', () => {
+  it('never grants ingestion-job read APIs', () => {
+    // StartIngestionJob is absent from this list on purpose: Bedrock requires it for
+    // IngestKnowledgeBaseDocuments, and the exact-actions test pins where it is granted.
     const forbidden = new Set([
-      'bedrock:StartIngestionJob',
       'bedrock:GetIngestionJob',
       'bedrock:ListIngestionJobs',
     ]);
@@ -279,6 +299,7 @@ describe('CDK stacks', () => {
     ).toEqual(
       [
         'bedrock:IngestKnowledgeBaseDocuments',
+        'bedrock:StartIngestionJob',
         'dynamodb:GetItem',
         'dynamodb:UpdateItem',
         'kms:Decrypt',
@@ -306,9 +327,11 @@ describe('CDK stacks', () => {
       ),
     ).toEqual(
       [
+        'dynamodb:DeleteItem',
         'dynamodb:GetItem',
         'dynamodb:Query',
         'kms:Decrypt',
+        's3:DeleteObject',
         's3:GetObject',
       ].sort(),
     );
@@ -477,5 +500,39 @@ describe('CDK stacks', () => {
     expect(rendered).toContain(
       '::foundation-model/anthropic.claude-sonnet-4-6',
     );
+  });
+
+  it('emails the owner as account spend approaches and passes the monthly budget', () => {
+    const template = Template.fromStack(
+      new KbBudgetStack(new App(), 'Budget', {
+        env,
+        alertEmail: 'owner@example.com',
+        monthlyLimitUsd: 10,
+      }),
+    );
+    const subscribers = [
+      { SubscriptionType: 'EMAIL', Address: 'owner@example.com' },
+    ];
+    const alert = (NotificationType: string, Threshold: number) => ({
+      Notification: {
+        NotificationType,
+        ComparisonOperator: 'GREATER_THAN',
+        Threshold,
+        ThresholdType: 'PERCENTAGE',
+      },
+      Subscribers: subscribers,
+    });
+    template.hasResourceProperties('AWS::Budgets::Budget', {
+      Budget: Match.objectLike({
+        BudgetType: 'COST',
+        TimeUnit: 'MONTHLY',
+        BudgetLimit: { Amount: 10, Unit: 'USD' },
+      }),
+      NotificationsWithSubscribers: [
+        alert('ACTUAL', 80),
+        alert('ACTUAL', 100),
+        alert('FORECASTED', 100),
+      ],
+    });
   });
 });

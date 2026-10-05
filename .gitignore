@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.mock
 cdk-outputs.json
 __pycache__/
 *.pyc

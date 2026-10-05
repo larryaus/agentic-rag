@@ -125,13 +125,15 @@ export function ChatPanel(props: {
               <span className="message-label">
                 {message.role === 'user' ? 'You' : 'Assistant'}
               </span>
-              <p>
+              {message.role === 'user' ? (
+                <p>{message.content}</p>
+              ) : (
                 <CitationText
                   text={message.content}
                   citations={message.citations}
                   onOpen={(citation) => void openCitation(citation)}
                 />
-              </p>
+              )}
             </article>
           ))
         )}

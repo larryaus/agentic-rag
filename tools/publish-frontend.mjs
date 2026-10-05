@@ -73,8 +73,14 @@ if (envOnly) {
   process.exit(0);
 }
 
+// AWS CLI v2 pipes command output into a pager on a terminal, which would leave the
+// invalidation step waiting for a keypress after the work is already done.
 const run = (command, args) =>
-  execFileSync(command, args, { cwd: root, stdio: 'inherit' });
+  execFileSync(command, args, {
+    cwd: root,
+    stdio: 'inherit',
+    env: { ...process.env, AWS_PAGER: '' },
+  });
 
 run('npm', ['run', '-w', 'frontend', 'build']);
 run('aws', [
