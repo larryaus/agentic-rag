@@ -31,8 +31,13 @@ vi.mock('../components/SessionList', () => ({
   SessionList: (props: {
     onSelect: (id: string) => void;
     onNew: () => void;
+    activeSessionId?: string;
+    refreshVersion: number;
   }) => (
-    <nav>
+    <nav
+      data-active-session={props.activeSessionId ?? ''}
+      data-refresh-version={props.refreshVersion}
+    >
       <button onClick={() => props.onSelect('a')}>Conversation A</button>
       <button onClick={() => props.onSelect('b')}>Conversation B</button>
       <button onClick={props.onNew}>New conversation</button>
@@ -153,4 +158,78 @@ it('shows a load error and restores an available composer', async () => {
     'Conversation unavailable',
   );
   expect(screen.getByRole('textbox')).toBeInTheDocument();
+});
+
+it('refreshes the sidebar when navigation aborts a stream that created a session', async () => {
+  let emit: ((event: SseEvent) => void) | undefined;
+  let finish: (() => void) | undefined;
+  mocks.getAccessToken.mockResolvedValue('token');
+  mocks.streamChat.mockImplementation(
+    (options: { onEvent: (event: SseEvent) => void }) => {
+      emit = options.onEvent;
+      return new Promise<void>((resolve) => { finish = resolve; });
+    },
+  );
+  mocks.apiFetch.mockResolvedValue(response('Answer B'));
+  render(<AppShell config={config} />);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: 'New question' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  await waitFor(() => expect(emit).toBeDefined());
+  act(() => { emit?.({ type: 'session', sessionId: 'new-session' }); });
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation B' }));
+
+  expect(await screen.findByText('Answer B')).toBeInTheDocument();
+  expect(screen.getByRole('navigation')).toHaveAttribute(
+    'data-refresh-version', '1',
+  );
+  expect(screen.getByRole('navigation')).toHaveAttribute('data-active-session', 'b');
+  await act(async () => {
+    emit?.({
+      type: 'done', sessionId: 'new-session', stopReason: 'end_turn',
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+    finish?.();
+  });
+  expect(screen.getByRole('navigation')).toHaveAttribute(
+    'data-refresh-version', '1',
+  );
+});
+
+it('opens a new conversation after a failed selection instead of reusing stale messages and session', async () => {
+  mocks.apiFetch.mockImplementation((_config: AppConfig, path: string) =>
+    path.endsWith('/a')
+      ? Promise.resolve(response('Old stored answer'))
+      : Promise.reject(new Error('Conversation unavailable')),
+  );
+  mocks.getAccessToken.mockResolvedValue('token');
+  mocks.streamChat.mockImplementation(
+    (options: { onEvent: (event: SseEvent) => void }) => {
+      options.onEvent({ type: 'text', delta: 'Newly streamed answer' });
+      return Promise.resolve();
+    },
+  );
+  render(<AppShell config={config} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation A' }));
+  expect(await screen.findByText('Old stored answer')).toBeInTheDocument();
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: 'Old question' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  expect(await screen.findByText('Newly streamed answer')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Conversation B' }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Conversation unavailable',
+  );
+  expect(screen.getByText('Ask your company knowledge base')).toBeInTheDocument();
+  expect(screen.queryByText('Old stored answer')).not.toBeInTheDocument();
+  expect(screen.getByRole('navigation')).toHaveAttribute('data-active-session', '');
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: 'New question' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  await waitFor(() => expect(mocks.streamChat).toHaveBeenCalledTimes(2));
+  expect(mocks.streamChat.mock.calls[1]?.[0]).not.toHaveProperty('sessionId');
 });

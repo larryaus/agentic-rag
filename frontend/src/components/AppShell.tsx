@@ -30,6 +30,8 @@ export function AppShell(props: { config: AppConfig }): React.JSX.Element {
       setMessages(detail.messages);
     } catch (cause) {
       if (selection !== selectionVersion.current) return;
+      setSessionId(undefined);
+      setMessages([]);
       setSessionError(
         cause instanceof Error ? cause.message : 'Could not load conversation',
       );

@@ -17,7 +17,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import type { Context, ScheduledEvent } from 'aws-lambda';
 import { mockClient } from 'aws-sdk-client-mock';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { handleReconciler } from '../handlers/reconciler';
 import type { DocumentItem } from '../lib/ddb';
@@ -325,7 +325,9 @@ describe('reconciler', () => {
       .rejects(new Error('temporary outage'));
     s3.on(HeadObjectCommand).resolves({ ContentLength: 10 });
 
-    await handleReconciler(schedule, context);
+    await expect(handleReconciler(schedule, context)).rejects.toThrow(
+      '1 document(s) could not be reconciled',
+    );
 
     expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(0);
     expect(ddb.commandCalls(UpdateCommand)).toHaveLength(1);
@@ -377,6 +379,14 @@ describe('reconciler', () => {
       bedrock.commandCalls(IngestKnowledgeBaseDocumentsCommand),
     ).toHaveLength(0);
     expect(
+      s3.commandCalls(DeleteObjectCommand).map((call) => call.args[0].input.Key),
+    ).toEqual([uploaded.s3Key, `${uploaded.s3Key}.metadata.json`]);
+    expect(
+      s3.commandCalls(DeleteObjectCommand)[1]?.calledBefore(
+        ddb.commandCalls(UpdateCommand)[0]!,
+      ),
+    ).toBe(true);
+    expect(
       ddb.commandCalls(UpdateCommand)[0]?.args[0].input
         .ExpressionAttributeValues?.[':status'],
     ).toBe('FAILED');
@@ -395,23 +405,188 @@ describe('reconciler', () => {
         $metadata: { httpStatusCode },
       });
 
-      await expect(handleReconciler(schedule, context)).rejects.toMatchObject({
-        $metadata: { httpStatusCode },
-      });
+      await expect(handleReconciler(schedule, context)).rejects.toThrow(
+        '1 document(s) could not be reconciled',
+      );
 
       expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(0);
       expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
     },
   );
 
-  it('leaves a document untouched when Bedrock omits its status', async () => {
-    ddb.on(QueryCommand).resolves({ Items: [document(109, 'UPLOADING')] });
+  it('checks for an abandoned upload when Bedrock omits the document', async () => {
+    const abandoned = document(109, 'UPLOADING');
+    ddb.on(QueryCommand).resolves({ Items: [abandoned] });
 
     await handleReconciler(schedule, context);
 
-    expect(s3.calls()).toHaveLength(0);
-    expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
+    expect(s3.commandCalls(HeadObjectCommand)).toHaveLength(1);
+    expect(
+      ddb.commandCalls(UpdateCommand)[0]?.args[0].input.ExpressionAttributeValues,
+    ).toEqual(expect.objectContaining({ ':status': 'FAILED' }));
+    expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(2);
   });
+
+  it('resubmits an omitted completed upload with the same idempotency token', async () => {
+    const uploaded = document(112, 'UPLOADING');
+    ddb.on(QueryCommand).resolves({ Items: [uploaded] });
+    s3.on(HeadObjectCommand).resolves({ ContentLength: 10 });
+
+    await handleReconciler(schedule, context);
+
+    expect(
+      bedrock.commandCalls(IngestKnowledgeBaseDocumentsCommand)[0]?.args[0].input
+        .clientToken,
+    ).toBe(`ingest-${uploaded.documentId}`);
+    expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(0);
+    expect(
+      ddb.commandCalls(UpdateCommand).map(
+        (call) => call.args[0].input.ExpressionAttributeValues?.[':status'],
+      ),
+    ).toEqual(['PENDING', 'INGESTING']);
+  });
+
+  it('does not declare exhausted recovery failed without a definite missing Bedrock status', async () => {
+    const uploaded = {
+      ...document(113, 'UPLOADING'),
+      ingestionRecoveryAttempts: 3,
+    };
+    ddb.on(QueryCommand).resolves({ Items: [uploaded] });
+    s3.on(HeadObjectCommand).resolves({ ContentLength: 10 });
+
+    await handleReconciler(schedule, context);
+
+    expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
+    expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(0);
+    expect(
+      bedrock.commandCalls(IngestKnowledgeBaseDocumentsCommand),
+    ).toHaveLength(0);
+  });
+
+  it.each(['PENDING', 'INGESTING'] as const)(
+    'leaves an omitted %s document untouched',
+    async (status) => {
+      ddb.on(QueryCommand).resolves({ Items: [document(114, status)] });
+
+      await handleReconciler(schedule, context);
+
+      expect(s3.calls()).toHaveLength(0);
+      expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
+    },
+  );
+
+  it('continues within and beyond a batch after one upload HEAD is denied, then reports failure', async () => {
+    const blocked = document(115, 'UPLOADING');
+    const indexed = Array.from({ length: 11 }, (_, index) =>
+      document(116 + index, 'INGESTING'),
+    );
+    const items = [blocked, ...indexed];
+    ddb.on(QueryCommand).resolves({ Items: items });
+    bedrock.on(GetKnowledgeBaseDocumentsCommand)
+      .resolvesOnce({
+        documentDetails: [
+          detail(blocked, 'NOT_FOUND'),
+          ...indexed.slice(0, 9).map((item) => detail(item, 'INDEXED')),
+        ],
+      })
+      .resolvesOnce({
+        documentDetails: indexed.slice(9).map((item) => detail(item, 'INDEXED')),
+      });
+    s3.on(HeadObjectCommand).rejects({
+      name: 'AccessDenied',
+      $metadata: { httpStatusCode: 403 },
+    });
+    const logs = vi.spyOn(console, 'log');
+
+    const failure: unknown = await handleReconciler(schedule, context).catch(
+      (error: unknown) => error,
+    );
+
+    expect(ddb.commandCalls(UpdateCommand)).toHaveLength(11);
+    expect(bedrock.commandCalls(GetKnowledgeBaseDocumentsCommand)).toHaveLength(2);
+    expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(0);
+    expect(failure).toEqual(
+      expect.objectContaining({ message: '1 document(s) could not be reconciled' }),
+    );
+    expect(
+      logs.mock.calls.map(([entry]) => JSON.parse(String(entry)) as unknown),
+    ).toContainEqual(
+      expect.objectContaining({ msg: 'reconciler summary', errored: 1, ready: 11 }),
+    );
+  });
+
+  it('continues after a document state write fails', async () => {
+    const blocked = document(127, 'INGESTING');
+    const indexed = document(128, 'INGESTING');
+    ddb.on(QueryCommand).resolves({ Items: [blocked, indexed] });
+    bedrock.on(GetKnowledgeBaseDocumentsCommand).resolves({
+      documentDetails: [detail(blocked, 'INDEXED'), detail(indexed, 'INDEXED')],
+    });
+    ddb.on(UpdateCommand, { Key: { pk: blocked.pk, sk: 'META' } })
+      .rejects(new Error('temporary DynamoDB failure'));
+
+    const failure: unknown = await handleReconciler(schedule, context).catch(
+      (error: unknown) => error,
+    );
+
+    expect(
+      ddb.commandCalls(UpdateCommand, { Key: { pk: indexed.pk, sk: 'META' } }),
+    ).toHaveLength(1);
+    expect(failure).toEqual(
+      expect.objectContaining({ message: '1 document(s) could not be reconciled' }),
+    );
+  });
+
+  it('continues polling later batches after a Bedrock batch fails', async () => {
+    const items = Array.from({ length: 11 }, (_, index) =>
+      document(129 + index, 'INGESTING'),
+    );
+    ddb.on(QueryCommand).resolves({ Items: items });
+    bedrock.on(GetKnowledgeBaseDocumentsCommand)
+      .rejectsOnce(new Error('temporary Bedrock failure'))
+      .resolvesOnce({ documentDetails: [detail(items[10]!, 'INDEXED')] });
+    const logs = vi.spyOn(console, 'log');
+
+    const failure: unknown = await handleReconciler(schedule, context).catch(
+      (error: unknown) => error,
+    );
+
+    expect(
+      ddb.commandCalls(UpdateCommand, { Key: { pk: items[10]!.pk, sk: 'META' } }),
+    ).toHaveLength(1);
+    expect(failure).toEqual(
+      expect.objectContaining({ message: '10 document(s) could not be reconciled' }),
+    );
+    expect(
+      logs.mock.calls.map(([entry]) => JSON.parse(String(entry)) as unknown),
+    ).toContainEqual(
+      expect.objectContaining({ msg: 'reconciler summary', errored: 10, ready: 1 }),
+    );
+  });
+
+  it.each(['object', 'sidecar'])(
+    'leaves oversized cleanup retryable when deleting the %s fails',
+    async (which) => {
+      const uploaded = document(140, 'UPLOADING');
+      ddb.on(QueryCommand).resolves({ Items: [uploaded] });
+      bedrock.on(GetKnowledgeBaseDocumentsCommand)
+        .resolves({ documentDetails: [detail(uploaded, 'NOT_FOUND')] });
+      s3.on(HeadObjectCommand).resolves({ ContentLength: 26_214_401 });
+      s3.on(DeleteObjectCommand, {
+        Key: which === 'object' ? uploaded.s3Key : `${uploaded.s3Key}.metadata.json`,
+      }).rejects(new Error('temporary S3 failure'));
+
+      await expect(handleReconciler(schedule, context)).rejects.toThrow(
+        '1 document(s) could not be reconciled',
+      );
+
+      expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(2);
+      expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
+      expect(
+        bedrock.commandCalls(IngestKnowledgeBaseDocumentsCommand),
+      ).toHaveLength(0);
+    },
+  );
 
   it('does not retry ingestion after losing a conditional recovery claim', async () => {
     const uploaded = document(110, 'UPLOADING');
@@ -447,7 +622,7 @@ describe('reconciler', () => {
     ddb.on(UpdateCommand).rejects(new Error('temporary DynamoDB failure'));
 
     await expect(handleReconciler(schedule, context)).rejects.toThrow(
-      'temporary DynamoDB failure',
+      '1 document(s) could not be reconciled',
     );
 
     expect(

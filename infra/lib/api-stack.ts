@@ -44,6 +44,7 @@ type FunctionOptions = {
   timeout: Duration;
   environment: Record<string, string>;
   reservedConcurrentExecutions?: number;
+  retryAttempts?: number;
 };
 
 export class KbApiStack extends Stack {
@@ -85,6 +86,9 @@ export class KbApiStack extends Stack {
               reservedConcurrentExecutions:
                 options.reservedConcurrentExecutions,
             }),
+        ...(options.retryAttempts === undefined
+          ? {}
+          : { retryAttempts: options.retryAttempts }),
         bundling: {
           minify: true,
           sourceMap: true,
@@ -130,6 +134,8 @@ export class KbApiStack extends Stack {
       memorySize: 512,
       timeout: Duration.minutes(2),
       reservedConcurrentExecutions: 1,
+      // The minute schedule retries failed sweeps; async retries would queue duplicates.
+      retryAttempts: 0,
       environment: {
         TABLE_NAME: props.conversationsTable.tableName,
         KNOWLEDGE_BASE_ID: props.knowledgeBaseId,

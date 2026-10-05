@@ -80,7 +80,6 @@ export function ChatPanel(props: {
       setStatus(event.message);
     } else if (event.type === 'done') {
       setStatus('');
-      props.onCompleted();
     }
   };
 
@@ -89,6 +88,21 @@ export function ChatPanel(props: {
     if (message === '' || activeRequest.current !== undefined) return;
     const request = new AbortController();
     activeRequest.current = request;
+    let receivedSession = false;
+    let notified = false;
+    const notifyCompleted = (): void => {
+      if (notified) return;
+      notified = true;
+      props.onCompleted();
+    };
+    request.signal.addEventListener(
+      'abort',
+      () => {
+        // The backend has created this session even if navigation hides its answer.
+        if (receivedSession) notifyCompleted();
+      },
+      { once: true },
+    );
     setInput('');
     setMessages((current) => [
       ...current,
@@ -109,7 +123,10 @@ export function ChatPanel(props: {
         message,
         signal: request.signal,
         onEvent: (event) => {
-          if (!request.signal.aborted) handleEvent(event);
+          if (request.signal.aborted) return;
+          if (event.type === 'session') receivedSession = true;
+          handleEvent(event);
+          if (event.type === 'done') notifyCompleted();
         },
       });
     } catch (cause) {
@@ -119,6 +136,7 @@ export function ChatPanel(props: {
         );
       }
     } finally {
+      if (receivedSession) notifyCompleted();
       if (activeRequest.current === request) {
         activeRequest.current = undefined;
         setStreaming(false);

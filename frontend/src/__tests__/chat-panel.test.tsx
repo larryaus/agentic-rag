@@ -79,6 +79,43 @@ describe('ChatPanel session assignment', () => {
 });
 
 describe('ChatPanel request isolation', () => {
+  it('refreshes a completed session only once when navigation aborts before the stream closes', async () => {
+    let emit: ((event: SseEvent) => void) | undefined;
+    let finish: (() => void) | undefined;
+    mocks.getAccessToken.mockResolvedValue('token');
+    mocks.streamChat.mockImplementation(
+      (options: { onEvent: (event: SseEvent) => void }) => {
+        emit = options.onEvent;
+        return new Promise<void>((resolve) => { finish = resolve; });
+      },
+    );
+    const onCompleted = vi.fn();
+    const view = render(
+      <ChatPanel
+        config={config}
+        initialMessages={initialMessages}
+        onSession={vi.fn()}
+        onCompleted={onCompleted}
+      />,
+    );
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'Question' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(emit).toBeDefined());
+    act(() => {
+      emit?.({ type: 'session', sessionId: 'new-session' });
+      emit?.({
+        type: 'done', sessionId: 'new-session', stopReason: 'end_turn',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      });
+    });
+    view.unmount();
+    await act(async () => { finish?.(); });
+
+    expect(onCompleted).toHaveBeenCalledTimes(1);
+  });
+
   it('aborts a replaced conversation and ignores its late text, session, and completion events', async () => {
     let emit: ((event: SseEvent) => void) | undefined;
     let finish: (() => void) | undefined;
