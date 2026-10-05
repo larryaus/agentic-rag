@@ -314,11 +314,15 @@ describe('CDK stacks', () => {
     ).toEqual(
       [
         'bedrock:GetKnowledgeBaseDocuments',
+        'bedrock:IngestKnowledgeBaseDocuments',
+        'bedrock:StartIngestionJob',
         'dynamodb:Query',
         'dynamodb:UpdateItem',
         'kms:Decrypt',
         'kms:GenerateDataKey',
         's3:DeleteObject',
+        's3:GetObject',
+        's3:ListBucket',
       ].sort(),
     );
     expect(

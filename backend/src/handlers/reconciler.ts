@@ -1,5 +1,6 @@
 import { GetKnowledgeBaseDocumentsCommand } from '@aws-sdk/client-bedrock-agent';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
+import { DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { Context, ScheduledEvent } from 'aws-lambda';
 
@@ -7,9 +8,11 @@ import { bedrockAgentClient, dynamoClient, s3Client } from '../lib/clients';
 import { loadReconcilerConfig } from '../lib/config';
 import { documentPk, type DocumentItem } from '../lib/ddb';
 import { errorMessage } from '../lib/errors';
+import { ingestDocument } from '../lib/ingestion';
 import { log, withLogContext } from '../lib/logger';
 
 const cfg = loadReconcilerConfig();
+const MAX_RECOVERY_ATTEMPTS = 3;
 const TERMINAL_FAILURES = new Set([
   'FAILED',
   'NOT_FOUND',
@@ -29,6 +32,7 @@ type Counts = {
   abandoned: number;
   unchanged: number;
   concurrent: number;
+  retried: number;
 };
 
 async function listDocuments(): Promise<DocumentItem[]> {
@@ -55,16 +59,19 @@ async function transition(opts: {
   expected: string;
   status: string;
   reason?: string;
+  recoveryAttempt?: number;
 }): Promise<boolean> {
+  const assignments = ['#status = :status', 'updatedAt = :updatedAt'];
+  if (opts.reason !== undefined) assignments.push('errorMessage = :reason');
+  if (opts.recoveryAttempt !== undefined) {
+    assignments.push('ingestionRecoveryAttempts = :attempt');
+  }
   try {
     await dynamoClient.send(
       new UpdateCommand({
         TableName: cfg.tableName,
         Key: { pk: documentPk(opts.item.documentId), sk: 'META' },
-        UpdateExpression:
-          opts.reason === undefined
-            ? 'SET #status = :status, updatedAt = :updatedAt REMOVE errorMessage'
-            : 'SET #status = :status, updatedAt = :updatedAt, errorMessage = :reason',
+        UpdateExpression: `SET ${assignments.join(', ')}${opts.reason === undefined ? ' REMOVE errorMessage' : ''}`,
         ConditionExpression: '#status = :expected',
         ExpressionAttributeNames: { '#status': 'status' },
         ExpressionAttributeValues: {
@@ -74,12 +81,16 @@ async function transition(opts: {
           ...(opts.reason === undefined
             ? {}
             : { ':reason': opts.reason.slice(0, 1000) }),
+          ...(opts.recoveryAttempt === undefined
+            ? {}
+            : { ':attempt': opts.recoveryAttempt }),
         },
       }),
     );
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (error instanceof ConditionalCheckFailedException) return false;
+    throw error;
   }
 }
 
@@ -117,6 +128,102 @@ async function deleteUploadObjects(item: DocumentItem): Promise<boolean> {
   return deleted;
 }
 
+async function recoverMissingIngestion(
+  item: DocumentItem,
+  counts: Counts,
+): Promise<void> {
+  let size: number | undefined;
+  try {
+    const object = await s3Client.send(
+      new HeadObjectCommand({ Bucket: cfg.docsBucket, Key: item.s3Key }),
+    );
+    size = object.ContentLength;
+    if (size === undefined) {
+      throw new Error('S3 omitted the uploaded object size');
+    }
+  } catch (error) {
+    // Only a definite missing object establishes an abandoned upload. A denied
+    // or unavailable HEAD must never authorize deleting an uploaded document.
+    if (
+      typeof error !== 'object' ||
+      error === null ||
+      !('$metadata' in error) ||
+      (error.$metadata as { httpStatusCode?: number } | undefined)
+        ?.httpStatusCode !== 404
+    ) {
+      throw error;
+    }
+    if (
+      await transition({
+        item,
+        expected: item.status,
+        status: 'FAILED',
+        reason: 'Upload was not completed before the presigned URL expired',
+      })
+    ) {
+      counts.abandoned += 1;
+      counts.failed += 1;
+      await deleteUploadObjects(item);
+    } else {
+      counts.concurrent += 1;
+    }
+    return;
+  }
+
+  const attempts = item.ingestionRecoveryAttempts ?? 0;
+  if (size > cfg.maxUploadBytes || attempts >= MAX_RECOVERY_ATTEMPTS) {
+    const reason =
+      size > cfg.maxUploadBytes
+        ? `Object exceeds the ${cfg.maxUploadBytes} byte upload limit`
+        : 'Ingestion did not start after three recovery attempts; the uploaded file has been retained';
+    if (
+      await transition({
+        item,
+        expected: item.status,
+        status: 'FAILED',
+        reason,
+      })
+    ) {
+      counts.failed += 1;
+    } else {
+      counts.concurrent += 1;
+    }
+    return;
+  }
+
+  // Claim the row before submission so a delayed S3 event cannot race recovery.
+  if (
+    !(await transition({
+      item,
+      expected: item.status,
+      status: 'PENDING',
+      recoveryAttempt: attempts + 1,
+    }))
+  ) {
+    counts.concurrent += 1;
+    return;
+  }
+  try {
+    await ingestDocument({
+      ...cfg,
+      documentId: item.documentId,
+      key: item.s3Key,
+    });
+  } catch (error) {
+    // The request may have been accepted. Leave PENDING for status polling,
+    // then retry only if Bedrock reports NOT_FOUND after the recovery interval.
+    log('warn', 'ingestion recovery request failed; retaining uploaded file', {
+      documentId: item.documentId,
+      error: errorMessage(error),
+    });
+    return;
+  }
+  counts.retried += 1;
+  if (!(await transition({ item, expected: 'PENDING', status: 'INGESTING' }))) {
+    counts.concurrent += 1;
+  }
+}
+
 export async function handleReconciler(
   _event: ScheduledEvent,
   context: Context,
@@ -130,14 +237,13 @@ export async function handleReconciler(
       abandoned: 0,
       unchanged: 0,
       concurrent: 0,
+      retried: 0,
     };
     log('info', 'reconciler run started');
     try {
       const documents = await listDocuments();
       counts.examined = documents.length;
-      const cutoff =
-        Date.now() - cfg.abandonedUploadMinutes * 60 * 1000;
-      const recoveredUploads = new Set<string>();
+      const cutoff = Date.now() - cfg.abandonedUploadMinutes * 60 * 1000;
       const pollable = documents.filter(
         (document) =>
           document.status === 'INGESTING' ||
@@ -169,9 +275,6 @@ export async function handleReconciler(
           }
           const status = detail.status ?? '';
           if (status === 'INDEXED') {
-            if (item.status === 'UPLOADING') {
-              recoveredUploads.add(item.documentId);
-            }
             if (
               await transition({
                 item,
@@ -184,14 +287,14 @@ export async function handleReconciler(
               counts.concurrent += 1;
             }
           } else if (
+            status === 'NOT_FOUND' &&
+            ['UPLOADING', 'PENDING'].includes(item.status)
+          ) {
+            await recoverMissingIngestion(item, counts);
+          } else if (
             TERMINAL_FAILURES.has(status) ||
             status.includes('PARTIAL')
           ) {
-            if (item.status === 'UPLOADING') {
-              // NOT_FOUND is the expected result for an abandoned presign.
-              // Leave it selectable until S3 cleanup succeeds below.
-              continue;
-            }
             const reason =
               detail.statusReason ??
               `Bedrock document entered terminal status ${status}`;
@@ -208,14 +311,13 @@ export async function handleReconciler(
               counts.concurrent += 1;
             }
           } else if (
-            item.status === 'UPLOADING' &&
+            ['UPLOADING', 'PENDING'].includes(item.status) &&
             ACTIVE_INGESTION_STATUSES.has(status)
           ) {
-            recoveredUploads.add(item.documentId);
             if (
               await transition({
                 item,
-                expected: 'UPLOADING',
+                expected: item.status,
                 status: 'INGESTING',
               })
             ) {
@@ -229,33 +331,10 @@ export async function handleReconciler(
         }
       }
 
-      const abandoned = documents.filter(
-        (document) =>
-          document.status === 'UPLOADING' &&
-          !recoveredUploads.has(document.documentId) &&
-          Date.parse(document.uploadedAt) < cutoff,
-      );
-      for (const item of abandoned) {
-        const changed = await transition({
-          item,
-          expected: 'UPLOADING',
-          status: 'FAILED',
-          reason: 'Upload was not completed before the presigned URL expired',
-        });
-        if (!changed) {
-          counts.concurrent += 1;
-          log('info', 'abandoned upload advanced before cleanup', {
-            documentId: item.documentId,
-          });
-          continue;
-        }
-        counts.abandoned += 1;
-        counts.failed += 1;
-        await deleteUploadObjects(item);
-      }
       log('info', 'reconciler summary', counts);
     } catch (error) {
       log('error', 'reconciler run failed', { error: errorMessage(error) });
+      throw error;
     } finally {
       log('info', 'reconciler run completed', {
         durationMs: Date.now() - started,

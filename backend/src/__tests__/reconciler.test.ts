@@ -1,9 +1,15 @@
 import {
   BedrockAgentClient,
   GetKnowledgeBaseDocumentsCommand,
+  IngestKnowledgeBaseDocumentsCommand,
   type KnowledgeBaseDocumentDetail,
 } from '@aws-sdk/client-bedrock-agent';
-import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
+import {
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import {
   DynamoDBDocumentClient,
   QueryCommand,
@@ -66,7 +72,12 @@ describe('reconciler', () => {
     ddb.reset();
     ddb.on(UpdateCommand).resolves({});
     s3.on(DeleteObjectCommand).resolves({});
+    s3.on(HeadObjectCommand).rejects({
+      name: 'NotFound',
+      $metadata: { httpStatusCode: 404 },
+    });
     bedrock.on(GetKnowledgeBaseDocumentsCommand).resolves({});
+    bedrock.on(IngestKnowledgeBaseDocumentsCommand).resolves({});
   });
 
   it('paginates, polls in groups of ten, and maps per-document statuses', async () => {
@@ -142,10 +153,7 @@ describe('reconciler', () => {
     expect(
       ddb
         .commandCalls(UpdateCommand)
-        .some(
-          (call) =>
-            call.args[0].input.Key?.pk === ingesting[4]!.pk,
-        ),
+        .some((call) => call.args[0].input.Key?.pk === ingesting[4]!.pk),
     ).toBe(false);
     expect(
       s3.commandCalls(DeleteObjectCommand).map((call) => call.args[0].input.Key),
@@ -155,7 +163,17 @@ describe('reconciler', () => {
   it('uses a conditional status write when abandoned cleanup loses a race', async () => {
     const abandoned = document(100, 'UPLOADING');
     ddb.on(QueryCommand).resolves({ Items: [abandoned] });
-    ddb.on(UpdateCommand).rejects(new Error('ConditionalCheckFailedException'));
+    bedrock
+      .on(GetKnowledgeBaseDocumentsCommand)
+      .resolves({ documentDetails: [detail(abandoned, 'NOT_FOUND')] });
+    ddb
+      .on(UpdateCommand)
+      .rejects(
+        new ConditionalCheckFailedException({
+          message: 'changed',
+          $metadata: {},
+        }),
+      );
 
     await handleReconciler(schedule, context);
 
@@ -174,6 +192,9 @@ describe('reconciler', () => {
   it('marks an abandoned row before attempting S3 cleanup', async () => {
     const abandoned = document(101, 'UPLOADING');
     ddb.on(QueryCommand).resolves({ Items: [abandoned] });
+    bedrock
+      .on(GetKnowledgeBaseDocumentsCommand)
+      .resolves({ documentDetails: [detail(abandoned, 'NOT_FOUND')] });
     s3.on(DeleteObjectCommand, {
       Bucket: 'test-documents',
       Key: `${abandoned.s3Key}.metadata.json`,
@@ -203,9 +224,9 @@ describe('reconciler', () => {
 
     await handleReconciler(schedule, context);
 
-    expect(
-      bedrock.commandCalls(GetKnowledgeBaseDocumentsCommand),
-    ).toHaveLength(1);
+    expect(bedrock.commandCalls(GetKnowledgeBaseDocumentsCommand)).toHaveLength(
+      1,
+    );
     expect(ddb.commandCalls(UpdateCommand)[0]?.args[0].input).toEqual(
       expect.objectContaining({
         ConditionExpression: '#status = :expected',
@@ -217,24 +238,221 @@ describe('reconciler', () => {
     );
   });
 
-  it('recovers an aged UPLOADING row when Bedrock already accepted it', async () => {
-    const accepted = document(103, 'UPLOADING');
-    ddb.on(QueryCommand).resolves({ Items: [accepted] });
-    bedrock.on(GetKnowledgeBaseDocumentsCommand).resolves({
-      documentDetails: [detail(accepted, 'IN_PROGRESS')],
-    });
+  it.each(['UPLOADING', 'PENDING'] as const)(
+    'recovers an aged %s row when Bedrock accepted the last recovery attempt',
+    async (status) => {
+      const accepted = {
+        ...document(103, status),
+        ingestionRecoveryAttempts: 3,
+      };
+      ddb.on(QueryCommand).resolves({ Items: [accepted] });
+      bedrock.on(GetKnowledgeBaseDocumentsCommand).resolves({
+        documentDetails: [detail(accepted, 'IN_PROGRESS')],
+      });
+
+      await handleReconciler(schedule, context);
+
+      expect(ddb.commandCalls(UpdateCommand)[0]?.args[0].input).toEqual(
+        expect.objectContaining({
+          ConditionExpression: '#status = :expected',
+          ExpressionAttributeValues: expect.objectContaining({
+            ':expected': status,
+            ':status': 'INGESTING',
+          }),
+        }),
+      );
+      expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(0);
+      expect(
+        bedrock.commandCalls(IngestKnowledgeBaseDocumentsCommand),
+      ).toHaveLength(0);
+    },
+  );
+
+  it.each(['UPLOADING', 'PENDING'] as const)(
+    'retries a completed %s upload when Bedrock did not accept ingestion',
+    async (status) => {
+      const uploaded = document(104, status);
+      ddb.on(QueryCommand).resolves({ Items: [uploaded] });
+      bedrock
+        .on(GetKnowledgeBaseDocumentsCommand)
+        .resolves({ documentDetails: [detail(uploaded, 'NOT_FOUND')] });
+      s3.on(HeadObjectCommand).resolves({ ContentLength: 10 });
+
+      await handleReconciler(schedule, context);
+
+      expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(0);
+      expect(
+        bedrock.commandCalls(IngestKnowledgeBaseDocumentsCommand)[0]?.args[0]
+          .input,
+      ).toEqual(
+        expect.objectContaining({
+          clientToken: `ingest-${uploaded.documentId}`,
+          documents: [
+            expect.objectContaining({
+              content: {
+                dataSourceType: 'S3',
+                s3: {
+                  s3Location: { uri: `s3://test-documents/${uploaded.s3Key}` },
+                },
+              },
+            }),
+          ],
+        }),
+      );
+      const writes = ddb.commandCalls(UpdateCommand);
+      expect(
+        writes.map(
+          (call) => call.args[0].input.ExpressionAttributeValues?.[':status'],
+        ),
+      ).toEqual(['PENDING', 'INGESTING']);
+      expect(
+        writes[0]?.args[0].input.ExpressionAttributeValues?.[':attempt'],
+      ).toBe(1);
+    },
+  );
+
+  it('retains the file and leaves a bounded recovery retry pending after a transport failure', async () => {
+    const uploaded = {
+      ...document(105, 'PENDING'),
+      ingestionRecoveryAttempts: 1,
+    };
+    ddb.on(QueryCommand).resolves({ Items: [uploaded] });
+    bedrock
+      .on(GetKnowledgeBaseDocumentsCommand)
+      .resolves({ documentDetails: [detail(uploaded, 'NOT_FOUND')] });
+    bedrock
+      .on(IngestKnowledgeBaseDocumentsCommand)
+      .rejects(new Error('temporary outage'));
+    s3.on(HeadObjectCommand).resolves({ ContentLength: 10 });
 
     await handleReconciler(schedule, context);
 
-    expect(ddb.commandCalls(UpdateCommand)[0]?.args[0].input).toEqual(
+    expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(0);
+    expect(ddb.commandCalls(UpdateCommand)).toHaveLength(1);
+    expect(
+      ddb.commandCalls(UpdateCommand)[0]?.args[0].input
+        .ExpressionAttributeValues,
+    ).toEqual(expect.objectContaining({ ':status': 'PENDING', ':attempt': 2 }));
+  });
+
+  it('retains a completed upload when recovery attempts are exhausted', async () => {
+    const uploaded = {
+      ...document(106, 'PENDING'),
+      ingestionRecoveryAttempts: 3,
+    };
+    ddb.on(QueryCommand).resolves({ Items: [uploaded] });
+    bedrock
+      .on(GetKnowledgeBaseDocumentsCommand)
+      .resolves({ documentDetails: [detail(uploaded, 'NOT_FOUND')] });
+    s3.on(HeadObjectCommand).resolves({ ContentLength: 10 });
+
+    await handleReconciler(schedule, context);
+
+    expect(
+      bedrock.commandCalls(IngestKnowledgeBaseDocumentsCommand),
+    ).toHaveLength(0);
+    expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(0);
+    expect(
+      ddb.commandCalls(UpdateCommand)[0]?.args[0].input
+        .ExpressionAttributeValues,
+    ).toEqual(
       expect.objectContaining({
-        ConditionExpression: '#status = :expected',
-        ExpressionAttributeValues: expect.objectContaining({
-          ':expected': 'UPLOADING',
-          ':status': 'INGESTING',
-        }),
+        ':status': 'FAILED',
+        ':reason': expect.stringContaining('retained'),
       }),
     );
+  });
+
+  it('does not ingest a completed upload above the actual byte limit', async () => {
+    const uploaded = document(107, 'UPLOADING');
+    ddb.on(QueryCommand).resolves({ Items: [uploaded] });
+    bedrock
+      .on(GetKnowledgeBaseDocumentsCommand)
+      .resolves({ documentDetails: [detail(uploaded, 'NOT_FOUND')] });
+    s3.on(HeadObjectCommand).resolves({ ContentLength: 26_214_401 });
+
+    await handleReconciler(schedule, context);
+
+    expect(
+      bedrock.commandCalls(IngestKnowledgeBaseDocumentsCommand),
+    ).toHaveLength(0);
+    expect(
+      ddb.commandCalls(UpdateCommand)[0]?.args[0].input
+        .ExpressionAttributeValues?.[':status'],
+    ).toBe('FAILED');
+  });
+
+  it.each([403, 503])(
+    'does not delete or fail a file when S3 HEAD returns %s',
+    async (httpStatusCode) => {
+      const uploaded = document(108, 'UPLOADING');
+      ddb.on(QueryCommand).resolves({ Items: [uploaded] });
+      bedrock
+        .on(GetKnowledgeBaseDocumentsCommand)
+        .resolves({ documentDetails: [detail(uploaded, 'NOT_FOUND')] });
+      s3.on(HeadObjectCommand).rejects({
+        name: 'ServiceError',
+        $metadata: { httpStatusCode },
+      });
+
+      await expect(handleReconciler(schedule, context)).rejects.toMatchObject({
+        $metadata: { httpStatusCode },
+      });
+
+      expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(0);
+      expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
+    },
+  );
+
+  it('leaves a document untouched when Bedrock omits its status', async () => {
+    ddb.on(QueryCommand).resolves({ Items: [document(109, 'UPLOADING')] });
+
+    await handleReconciler(schedule, context);
+
+    expect(s3.calls()).toHaveLength(0);
+    expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
+  });
+
+  it('does not retry ingestion after losing a conditional recovery claim', async () => {
+    const uploaded = document(110, 'UPLOADING');
+    ddb.on(QueryCommand).resolves({ Items: [uploaded] });
+    bedrock
+      .on(GetKnowledgeBaseDocumentsCommand)
+      .resolves({ documentDetails: [detail(uploaded, 'NOT_FOUND')] });
+    s3.on(HeadObjectCommand).resolves({ ContentLength: 10 });
+    ddb
+      .on(UpdateCommand)
+      .rejects(
+        new ConditionalCheckFailedException({
+          message: 'changed',
+          $metadata: {},
+        }),
+      );
+
+    await handleReconciler(schedule, context);
+
+    expect(
+      bedrock.commandCalls(IngestKnowledgeBaseDocumentsCommand),
+    ).toHaveLength(0);
+    expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(0);
+  });
+
+  it('surfaces a failed recovery state write instead of treating it as a concurrent update', async () => {
+    const uploaded = document(111, 'UPLOADING');
+    ddb.on(QueryCommand).resolves({ Items: [uploaded] });
+    bedrock
+      .on(GetKnowledgeBaseDocumentsCommand)
+      .resolves({ documentDetails: [detail(uploaded, 'NOT_FOUND')] });
+    s3.on(HeadObjectCommand).resolves({ ContentLength: 10 });
+    ddb.on(UpdateCommand).rejects(new Error('temporary DynamoDB failure'));
+
+    await expect(handleReconciler(schedule, context)).rejects.toThrow(
+      'temporary DynamoDB failure',
+    );
+
+    expect(
+      bedrock.commandCalls(IngestKnowledgeBaseDocumentsCommand),
+    ).toHaveLength(0);
     expect(s3.commandCalls(DeleteObjectCommand)).toHaveLength(0);
   });
 });

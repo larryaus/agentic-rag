@@ -84,8 +84,11 @@ Ask me for a demo account and I will create one for you.
   usage keeps the idle cost near zero, which matters for a system that sits unused most
   of the day.
 - **Per-document ingestion with a reconciler.** Each upload is ingested directly rather
-  than by re-syncing the whole data source, and a one-minute reconciler drives every
-  document to a terminal state, so a dropped event cannot leave one stuck.
+  than by re-syncing the whole data source. A one-minute reconciler polls accepted
+  ingestion and checks S3 for completed uploads whose event or ingestion request failed.
+  After the ten-minute recovery interval it retries with the same idempotency token,
+  up to three scheduled attempts. Exhausted uploads become `FAILED` with their files
+  retained; only a confirmed missing S3 object is treated as an abandoned upload.
 - **Retrieval is a tool, and citations are resolved server-side.** The agent decides
   when to search, and citation chips are built from the chunks that were actually
   returned, so a chip cannot point at a document the model invented.

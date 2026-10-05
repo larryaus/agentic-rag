@@ -21,9 +21,17 @@ export function ChatPanel(props: {
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState('');
   const currentCitations = useRef<Citation[]>([]);
+  const activeRequest = useRef<AbortController | undefined>(undefined);
 
   useEffect(() => {
     setMessages(props.initialMessages);
+    setStreaming(false);
+    setStatus('');
+    currentCitations.current = [];
+    return () => {
+      activeRequest.current?.abort();
+      activeRequest.current = undefined;
+    };
   }, [props.initialMessages]);
 
   const openCitation = async (citation: Citation): Promise<void> => {
@@ -78,7 +86,9 @@ export function ChatPanel(props: {
 
   const submit = async (): Promise<void> => {
     const message = input.trim();
-    if (message === '' || streaming) return;
+    if (message === '' || activeRequest.current !== undefined) return;
+    const request = new AbortController();
+    activeRequest.current = request;
     setInput('');
     setMessages((current) => [
       ...current,
@@ -89,6 +99,7 @@ export function ChatPanel(props: {
     currentCitations.current = [];
     try {
       const token = await getAccessToken(props.config);
+      if (request.signal.aborted) return;
       await streamChat({
         url: props.config.chatUrl,
         accessToken: token,
@@ -96,14 +107,22 @@ export function ChatPanel(props: {
           ? {}
           : { sessionId: props.sessionId }),
         message,
-        onEvent: handleEvent,
+        signal: request.signal,
+        onEvent: (event) => {
+          if (!request.signal.aborted) handleEvent(event);
+        },
       });
     } catch (cause) {
-      setStatus(
-        cause instanceof Error ? cause.message : 'The chat request failed',
-      );
+      if (!request.signal.aborted) {
+        setStatus(
+          cause instanceof Error ? cause.message : 'The chat request failed',
+        );
+      }
     } finally {
-      setStreaming(false);
+      if (activeRequest.current === request) {
+        activeRequest.current = undefined;
+        setStreaming(false);
+      }
     }
   };
 

@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { MessageView } from '@kb/shared';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import type { MessageView, SseEvent } from '@kb/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppConfig } from '../config';
@@ -31,11 +38,13 @@ afterEach(cleanup);
 describe('ChatPanel session assignment', () => {
   it('preserves optimistic messages when a new stream assigns its session ID', async () => {
     let finishStream: (() => void) | undefined;
+    let signal: AbortSignal | undefined;
     mocks.getAccessToken.mockResolvedValue('token');
     mocks.streamChat.mockImplementation(
-      () =>
+      (options: { signal: AbortSignal }) =>
         new Promise<void>((resolve) => {
           finishStream = resolve;
+          signal = options.signal;
         }),
     );
     const baseProps = {
@@ -51,6 +60,7 @@ describe('ChatPanel session assignment', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(await screen.findByText('First question')).toBeInTheDocument();
+    await waitFor(() => expect(signal).toBeDefined());
 
     view.rerender(
       <ChatPanel
@@ -60,10 +70,148 @@ describe('ChatPanel session assignment', () => {
     );
 
     expect(screen.getByText('First question')).toBeInTheDocument();
+    expect(signal?.aborted).toBe(false);
     finishStream?.();
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument(),
     );
+  });
+});
+
+describe('ChatPanel request isolation', () => {
+  it('aborts a replaced conversation and ignores its late text, session, and completion events', async () => {
+    let emit: ((event: SseEvent) => void) | undefined;
+    let finish: (() => void) | undefined;
+    let signal: AbortSignal | undefined;
+    mocks.getAccessToken.mockResolvedValue('token');
+    mocks.streamChat.mockImplementation(
+      (options: {
+        onEvent: (event: SseEvent) => void;
+        signal: AbortSignal;
+      }) => {
+        emit = options.onEvent;
+        signal = options.signal;
+        return new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+      },
+    );
+    const callbacks = { onSession: vi.fn(), onCompleted: vi.fn() };
+    const view = render(
+      <ChatPanel
+        config={config}
+        sessionId="old"
+        initialMessages={initialMessages}
+        {...callbacks}
+      />,
+    );
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'Old question' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(emit).toBeDefined());
+    view.rerender(
+      <ChatPanel
+        config={config}
+        sessionId="new"
+        initialMessages={[
+          {
+            role: 'assistant',
+            content: 'New answer',
+            citations: [],
+            createdAt: '2026-10-05T00:00:00Z',
+          },
+        ]}
+        {...callbacks}
+      />,
+    );
+
+    await act(async () => {
+      emit?.({ type: 'text', delta: ' OLD RESPONSE' });
+      emit?.({ type: 'session', sessionId: 'old' });
+      emit?.({
+        type: 'done',
+        sessionId: 'old',
+        stopReason: 'end_turn',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      });
+      finish?.();
+    });
+
+    expect(signal?.aborted).toBe(true);
+    expect(screen.getByText('New answer')).toBeInTheDocument();
+    expect(screen.queryByText(/OLD RESPONSE/)).not.toBeInTheDocument();
+    expect(callbacks.onSession).not.toHaveBeenCalled();
+    expect(callbacks.onCompleted).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
+  });
+
+  it('does not start a request when navigation cancels pending token retrieval', async () => {
+    let finishToken: ((token: string) => void) | undefined;
+    mocks.getAccessToken.mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          finishToken = resolve;
+        }),
+    );
+    const props = { config, onSession: vi.fn(), onCompleted: vi.fn() };
+    const view = render(
+      <ChatPanel {...props} initialMessages={initialMessages} />,
+    );
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'Old question' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    view.rerender(<ChatPanel {...props} initialMessages={[]} />);
+
+    await act(async () => {
+      finishToken?.('token');
+    });
+
+    expect(mocks.streamChat).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
+  });
+
+  it('aborts on unmount and ignores late errors and callbacks', async () => {
+    let emit: ((event: SseEvent) => void) | undefined;
+    let reject: ((error: Error) => void) | undefined;
+    let signal: AbortSignal | undefined;
+    mocks.getAccessToken.mockResolvedValue('token');
+    mocks.streamChat.mockImplementation(
+      (options: {
+        onEvent: (event: SseEvent) => void;
+        signal: AbortSignal;
+      }) => {
+        emit = options.onEvent;
+        signal = options.signal;
+        return new Promise<void>((_resolve, rejectRequest) => {
+          reject = rejectRequest;
+        });
+      },
+    );
+    const onSession = vi.fn();
+    const view = render(
+      <ChatPanel
+        config={config}
+        initialMessages={initialMessages}
+        onSession={onSession}
+        onCompleted={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'Old question' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(emit).toBeDefined());
+    view.unmount();
+
+    await act(async () => {
+      emit?.({ type: 'session', sessionId: 'old' });
+      reject?.(new Error('late network error'));
+    });
+
+    expect(signal?.aborted).toBe(true);
+    expect(onSession).not.toHaveBeenCalled();
   });
 });
 
@@ -74,8 +222,18 @@ describe('ChatPanel message formatting', () => {
       <ChatPanel
         config={config}
         initialMessages={[
-          { role: 'user', content: 'what is **this**', citations: [], createdAt },
-          { role: 'assistant', content: 'It is **bold**', citations: [], createdAt },
+          {
+            role: 'user',
+            content: 'what is **this**',
+            citations: [],
+            createdAt,
+          },
+          {
+            role: 'assistant',
+            content: 'It is **bold**',
+            citations: [],
+            createdAt,
+          },
         ]}
         onSession={vi.fn()}
         onCompleted={vi.fn()}

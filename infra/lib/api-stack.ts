@@ -136,6 +136,7 @@ export class KbApiStack extends Stack {
         DATA_SOURCE_ID: props.dataSourceId,
         DOCS_BUCKET: props.documentsBucket.bucketName,
         ABANDONED_UPLOAD_MINUTES: '10',
+        MAX_UPLOAD_BYTES: '26214400',
       },
     });
     const presign = createFunction({
@@ -248,7 +249,11 @@ export class KbApiStack extends Stack {
 
     reconciler.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['bedrock:GetKnowledgeBaseDocuments'],
+        actions: [
+          'bedrock:GetKnowledgeBaseDocuments',
+          'bedrock:IngestKnowledgeBaseDocuments',
+          'bedrock:StartIngestionJob',
+        ],
         resources: [knowledgeBaseArn],
       }),
     );
@@ -260,8 +265,16 @@ export class KbApiStack extends Stack {
     );
     reconciler.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['s3:DeleteObject'],
+        actions: ['s3:GetObject', 's3:DeleteObject'],
         resources: [uploadObjects],
+      }),
+    );
+    // S3 returns 404 for a missing HEAD only when the caller can list the
+    // bucket; otherwise a missing object and access denial both return 403.
+    reconciler.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:ListBucket'],
+        resources: [props.documentsBucket.bucketArn],
       }),
     );
     reconciler.addToRolePolicy(
