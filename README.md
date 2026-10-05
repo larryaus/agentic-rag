@@ -6,6 +6,9 @@ language, and get streamed answers whose claims link back to the source files.
 
 **Live demo: https://d3efqlxqt2imc9.cloudfront.net**
 
+<img width="1428" height="754" alt="image" src="https://github.com/user-attachments/assets/1f5b56c4-fdf5-4f39-b8b7-971d3858e2ff" />
+
+
 Sign-in is invite-only: self-registration is disabled so that model spend stays bounded.
 Ask me for a demo account and I will create one for you.
 
