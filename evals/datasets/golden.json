@@ -1,47 +1,47 @@
 [
   {
     "id": "handbook-annual-leave",
-    "question": "年假需要提前多久申请，未用完可以结转多少天？",
+    "question": "How far in advance must annual leave be requested, and how many unused days can be carried over?",
     "expected_facts": [
-      "年假需提前 3 个工作日通过 OA 提交申请。",
-      "当年未使用的年假最多结转 5 天到下一年度。"
+      "Annual leave must be requested through OA 3 working days in advance.",
+      "Up to 5 days of unused annual leave can be carried over to the following year."
     ],
     "expected_sources": ["company_handbook.md"]
   },
   {
     "id": "handbook-expenses",
-    "question": "差旅报销的日补标准和提交期限是什么？",
+    "question": "What is the travel per diem, and what is the deadline for submitting an expense claim?",
     "expected_facts": [
-      "出差日补为 300 元/日。",
-      "报销单应在费用产生后 30 天内提交。"
+      "The travel per diem is CNY 300 per day.",
+      "Expense claims must be submitted within 30 days of the expense being incurred."
     ],
     "expected_sources": ["company_handbook.md"]
   },
   {
     "id": "faq-pro-plan",
-    "question": "Pro 套餐的价格、文件上限和 API 限流是多少？",
+    "question": "What are the price, file size limit and API rate limits of the Pro plan?",
     "expected_facts": [
-      "Pro 套餐为 299 元/席位/月。",
-      "Pro 单文件上限为 25 MB。",
-      "Pro API 限制为 60 RPM 和每分钟 10000 tokens。"
+      "The Pro plan costs CNY 299 per seat per month.",
+      "The Pro plan allows up to 25 MB per file.",
+      "The Pro API limits are 60 RPM and 10,000 tokens per minute."
     ],
     "expected_sources": ["product_faq.md"]
   },
   {
     "id": "support-p0",
-    "question": "P0 工单的确认、升级和首次状态更新时间分别是多少？",
+    "question": "For a P0 ticket, what are the time limits for acknowledging, escalating and giving the first status update?",
     "expected_facts": [
-      "5 分钟内确认。",
-      "15 分钟内升级到值班工程师。",
-      "30 分钟内给出首次状态更新。"
+      "Acknowledge within 5 minutes.",
+      "Escalate to the on-call engineer within 15 minutes.",
+      "Give the first status update within 30 minutes."
     ],
     "expected_sources": ["support_runbook.md"]
   },
   {
     "id": "support-close",
-    "question": "客户多久没有补充信息后可以关闭工单？",
+    "question": "After how long without further information from the customer can a ticket be closed?",
     "expected_facts": [
-      "连续 3 个工作日未收到客户补充信息后可以关闭工单。"
+      "A ticket can be closed after 3 consecutive working days without further information from the customer."
     ],
     "expected_sources": ["support_runbook.md"]
   }

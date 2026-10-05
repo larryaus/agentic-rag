@@ -148,7 +148,7 @@ frontend/  React 19 + Vite single-page application
 infra/     AWS CDK v2 stacks: frontend hosting, storage, knowledge base, auth, API, budget
 shared/    Type-only API and SSE contracts used by both sides
 evals/     Python golden-dataset schema for retrieval evaluation
-samples/   Three Chinese-language sample documents
+samples/   Three sample documents: an employee handbook, a product FAQ, a support runbook
 tools/     Local mock server and the frontend publish script
 ```
 

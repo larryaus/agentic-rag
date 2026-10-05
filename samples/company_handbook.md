@@ -1,43 +1,43 @@
-# 公司员工手册
+# Employee Handbook
 
-## 一、上下班与考勤
+## 1. Working Hours and Attendance
 
-公司实行弹性工作制，标准工作时间为每周五天，每天 8 小时。
-- 上班时段：09:00 - 18:30，其中午休 12:00 - 13:30。
-- 核心工作时段为 10:30 - 16:30，所有员工必须在岗。
-- 迟到 30 分钟以内视为早会迟到，需在团队群中说明；超过 30 分钟需提前请假。
-- 远程办公每月不超过 5 天，需提前一个工作日在 OA 系统申请。
+The company runs a flexible working schedule. The standard working week is five days of 8 hours each.
+- Office hours: 09:00 - 18:30, with a lunch break from 12:00 to 13:30.
+- Core hours are 10:30 - 16:30, when every employee must be available.
+- Arriving up to 30 minutes late counts as being late for the morning stand-up and must be explained in the team chat; anything beyond 30 minutes requires requesting leave in advance.
+- Remote work is limited to 5 days per month and must be requested in the OA system one working day in advance.
 
-## 二、请假流程
+## 2. Leave
 
-请假分为三类：年假、病假与事假。
+There are three types of leave: annual leave, sick leave and personal leave.
 
-### 年假
-- 入职满 1 年，每年享有 10 天带薪年假；满 5 年增加至 15 天。
-- 提前 3 个工作日通过 OA 提交申请，主管批准后生效。
-- 当年未使用的年假最多结转 5 天到下一年度。
+### Annual leave
+- After 1 year of service, employees receive 10 days of paid annual leave per year; after 5 years this increases to 15 days.
+- Submit the request through OA 3 working days in advance; it takes effect once your manager approves it.
+- Up to 5 days of unused annual leave can be carried over to the following year.
 
-### 病假
-- 当日通过 OA 申请并附医院诊断证明，超过 3 天需另附医生开具的休假建议。
-- 病假期间按照基本工资的 80% 发放工资。
+### Sick leave
+- Apply through OA on the day and attach the hospital's diagnosis; absences longer than 3 days also need a doctor's note recommending rest.
+- Sick leave is paid at 80% of base salary.
 
-### 事假
-- 提前 1 个工作日 OA 申请；事假为无薪假。
-- 单次连续事假不得超过 5 天，年度累计不超过 15 天。
+### Personal leave
+- Apply through OA 1 working day in advance; personal leave is unpaid.
+- A single period of personal leave may not exceed 5 consecutive days, and the yearly total may not exceed 15 days.
 
-## 三、报销规范
+## 3. Expenses
 
-差旅与办公用品报销均通过费控系统提交，需附发票与审批截图。
-- 市内交通：单次 100 元以内可凭票据报销。
-- 出差日补：300 元/日，含餐饮与市内交通。
-- 报销单应在费用产生后 30 天内提交，逾期不予受理。
+Travel and office supply expenses are submitted through the expense system, with the invoice and a screenshot of the approval attached.
+- Local transport: single trips of up to CNY 100 can be reimbursed with a receipt.
+- Travel per diem: CNY 300 per day, covering meals and local transport.
+- Expense claims must be submitted within 30 days of the expense being incurred; late claims are not accepted.
 
-## 四、绩效与晋升
+## 4. Performance and Promotion
 
-- 每半年一次绩效评估，分为 S / A / B / C 四档。
-- 连续两次 S 档可申请破格晋升评审。
-- 晋升评审每年举行两次，分别在 4 月和 10 月。
+- Performance is reviewed every six months and rated S, A, B or C.
+- Two consecutive S ratings make an employee eligible to apply for a fast-track promotion review.
+- Promotion reviews are held twice a year, in April and October.
 
-## 五、保密义务
+## 5. Confidentiality
 
-员工对公司业务数据、客户信息、源代码等保密信息负有持续保密义务，离职后两年内仍然有效。违反者依据保密协议追究法律责任。
+Employees have an ongoing duty to keep business data, customer information, source code and other confidential information secret. This duty remains in force for two years after leaving the company. Breaches are pursued under the confidentiality agreement.
