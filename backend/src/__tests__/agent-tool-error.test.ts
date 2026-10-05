@@ -7,7 +7,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 
 import { runAgent } from '../lib/agent';
 import { retrieve } from '../lib/retrieve';
-import { textTurn, toolTurn } from './agent-fixtures';
+import { chunk, textTurn, toolTurn } from './agent-fixtures';
 
 vi.mock('../lib/retrieve', () => ({ retrieve: vi.fn() }));
 
@@ -55,13 +55,20 @@ it('returns tool errors to the model and lets the loop finish', async () => {
   expect(result.stopReason).toBe('end_turn');
 });
 
-it('returns malformed tool input to the model instead of failing the turn', async () => {
+it('lets the model correct malformed tool input and answer with a citation', async () => {
   bedrock
     .on(ConverseStreamCommand)
     .resolvesOnce({
       stream: toolTurn({ toolUseId: 'malformed', fragments: ['{"query":'] }),
     })
-    .resolvesOnce({ stream: textTurn('Let me answer without searching.') });
+    .resolvesOnce({
+      stream: toolTurn({
+        toolUseId: 'corrected',
+        fragments: ['{"query":"leave policy"}'],
+      }),
+    })
+    .resolvesOnce({ stream: textTurn('Annual leave is 20 days [ref:1].') });
+  vi.mocked(retrieve).mockResolvedValue([chunk(0, 'leave policy')]);
 
   const result = await runAgent({
     history: [],
@@ -84,10 +91,12 @@ it('returns malformed tool input to the model instead of failing the turn', asyn
   expect(toolResult?.content?.[0]?.text).toMatch(
     /^Error: Tool input was not a valid JSON object: SyntaxError/,
   );
-  expect(retrieve).not.toHaveBeenCalled();
+  expect(retrieve).toHaveBeenCalledOnce();
+  expect(retrieve).toHaveBeenCalledWith({ query: 'leave policy', topK: 8 });
   expect(result).toEqual(
     expect.objectContaining({
-      text: 'Let me answer without searching.',
+      text: 'Annual leave is 20 days [ref:1].',
+      citations: [expect.objectContaining({ ref: 1, title: 'doc-0.md' })],
       stopReason: 'end_turn',
     }),
   );

@@ -113,6 +113,16 @@ describe('chat handler response ordering', () => {
     mocks.persistCompletedTurn.mockResolvedValue(undefined);
   });
 
+  // The question and its answer, or its failure, must carry the same turn ID.
+  const expectOneTurnId = (): void => {
+    const items = mocks.makeMessageItem.mock.calls.map(
+      ([value]) => value as { role: string; turnId?: unknown },
+    );
+    expect(items.map((value) => value.role)).toEqual(['user', 'assistant']);
+    expect(typeof items[0]?.turnId).toBe('string');
+    expect(items[1]?.turnId).toBe(items[0]?.turnId);
+  };
+
   it('writes and ends a plain 401 before any SSE frame', async () => {
     mocks.verifyBearer.mockRejectedValue(new Error('invalid'));
     const { chatHandler } = await import('../handlers/chat');
@@ -171,7 +181,7 @@ describe('chat handler response ordering', () => {
     );
     expect(mocks.persistSubmittedMessage.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.runAgent.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
-    );
+    );    expectOneTurnId();
   });
 
   it('keeps a new session readable after a generic agent failure', async () => {
@@ -210,7 +220,7 @@ describe('chat handler response ordering', () => {
     );
     expect(stream.chunks.join('')).toContain('event: error');
     expect(stream.chunks.join('')).not.toContain('throttled upstream');
-    expect(stream.writableEnded).toBe(true);
+    expect(stream.writableEnded).toBe(true);    expectOneTurnId();
   });
 
   it('returns 403 for another user before committing the stream', async () => {

@@ -221,11 +221,15 @@ export async function chatHandler(
             sessionId,
             limit: cfg.maxHistoryMessages,
           });
+      // Answers are stored when they complete, so overlapping requests interleave
+      // rows; the shared turn ID is what pairs a question with its answer.
+      const turnId = randomUUID();
       const userItem = makeMessageItem({
         sessionId,
         userSub: auth.sub,
         role: 'user',
         content: body.message,
+        turnId,
         createdAt,
         ttl,
       });
@@ -246,6 +250,7 @@ export async function chatHandler(
           sessionId,
           userSub: auth.sub,
           role: 'assistant',
+          turnId,
           content: result.text,
           citations: result.citations,
           usage: result.usage,
@@ -284,6 +289,7 @@ export async function chatHandler(
           sessionId,
           userSub: auth.sub,
           role: 'assistant',
+          turnId,
           content: failureResult.text,
           citations: failureResult.citations,
           usage: failureResult.usage,
