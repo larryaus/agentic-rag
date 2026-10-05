@@ -10,7 +10,7 @@ import {
 import type { Construct } from 'constructs';
 
 export type KbStorageStackProps = StackProps & {
-  frontendOrigin: string;
+  frontendOrigins: string[];
   embeddingDimension: number;
 };
 
@@ -44,7 +44,7 @@ export class KbStorageStack extends Stack {
       autoDeleteObjects: true,
       cors: [
         {
-          allowedOrigins: [props.frontendOrigin],
+          allowedOrigins: props.frontendOrigins,
           allowedMethods: [s3.HttpMethods.PUT],
           allowedHeaders: ['*'],
         },
@@ -64,12 +64,22 @@ export class KbStorageStack extends Stack {
     const vectorBucket = new s3vectors.CfnVectorBucket(this, 'VectorBucket', {
       vectorBucketName: `kb-vectors-${this.account}-${this.region}`,
     });
+    // S3 Vectors caps filterable metadata at 2 KB per vector, and Bedrock stores each
+    // chunk's text and source blob as metadata. Left filterable, any normal-sized chunk
+    // fails ingestion with no status reason. This setting is create-only, so changing
+    // it means a new index name.
     const vectorIndex = new s3vectors.CfnIndex(this, 'VectorIndex', {
-      indexName: 'kb-index',
+      indexName: 'kb-chunks',
       vectorBucketArn: vectorBucket.attrVectorBucketArn,
       dataType: 'float32',
       dimension: props.embeddingDimension,
       distanceMetric: 'cosine',
+      metadataConfiguration: {
+        nonFilterableMetadataKeys: [
+          'AMAZON_BEDROCK_TEXT',
+          'AMAZON_BEDROCK_METADATA',
+        ],
+      },
     });
     vectorIndex.addDependency(vectorBucket);
     this.vectorBucketArn = vectorBucket.attrVectorBucketArn;

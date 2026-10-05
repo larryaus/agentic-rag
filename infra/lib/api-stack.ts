@@ -26,7 +26,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import type { Construct } from 'constructs';
 
 export type KbApiStackProps = StackProps & {
-  frontendOrigin: string;
+  frontendOrigins: string[];
   chatModelId: string;
   documentsBucket: s3.Bucket;
   conversationsTable: dynamodb.Table;
@@ -216,9 +216,14 @@ export class KbApiStack extends Stack {
       }),
     );
 
+    // Direct ingestion authorizes against StartIngestionJob as well as its own action;
+    // without both, Bedrock rejects IngestKnowledgeBaseDocuments with AccessDenied.
     ingest.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['bedrock:IngestKnowledgeBaseDocuments'],
+        actions: [
+          'bedrock:IngestKnowledgeBaseDocuments',
+          'bedrock:StartIngestionJob',
+        ],
         resources: [knowledgeBaseArn],
       }),
     );
@@ -293,7 +298,13 @@ export class KbApiStack extends Stack {
     );
     documents.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['s3:GetObject'],
+        actions: ['dynamodb:DeleteItem'],
+        resources: [props.conversationsTable.tableArn],
+      }),
+    );
+    documents.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:GetObject', 's3:DeleteObject'],
         resources: [uploadObjects],
       }),
     );
@@ -319,10 +330,11 @@ export class KbApiStack extends Stack {
 
     const api = new apigatewayv2.HttpApi(this, 'HttpApi', {
       corsPreflight: {
-        allowOrigins: [props.frontendOrigin],
+        allowOrigins: props.frontendOrigins,
         allowMethods: [
           apigatewayv2.CorsHttpMethod.GET,
           apigatewayv2.CorsHttpMethod.POST,
+          apigatewayv2.CorsHttpMethod.DELETE,
           apigatewayv2.CorsHttpMethod.OPTIONS,
         ],
         allowHeaders: ['authorization', 'content-type'],
@@ -362,6 +374,15 @@ export class KbApiStack extends Stack {
       ...routeOptions,
     });
     api.addRoutes({
+      path: '/v1/documents/{documentId}',
+      methods: [apigatewayv2.HttpMethod.DELETE],
+      integration: new HttpLambdaIntegration(
+        'DocumentsRemoveIntegration',
+        documents,
+      ),
+      ...routeOptions,
+    });
+    api.addRoutes({
       path: '/v1/sessions',
       methods: [apigatewayv2.HttpMethod.GET],
       integration: new HttpLambdaIntegration('SessionsListIntegration', sessions),
@@ -386,7 +407,7 @@ export class KbApiStack extends Stack {
       authType: lambda.FunctionUrlAuthType.NONE,
       invokeMode: lambda.InvokeMode.RESPONSE_STREAM,
       cors: {
-        allowedOrigins: [props.frontendOrigin],
+        allowedOrigins: props.frontendOrigins,
         allowedMethods: [lambda.HttpMethod.POST],
         allowedHeaders: ['authorization', 'content-type'],
       },

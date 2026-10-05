@@ -5,6 +5,8 @@
     "cognitoDomainPrefix": "",
     "embeddingModelId": "amazon.titan-embed-text-v2:0",
     "embeddingDimension": 1024,
-    "chatModelId": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+    "chatModelId": "au.anthropic.claude-sonnet-4-6",
+    "budgetAlertEmail": "",
+    "monthlyBudgetUsd": 10
   }
 }

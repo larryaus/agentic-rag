@@ -66,3 +66,23 @@ describe('ChatPanel session assignment', () => {
     );
   });
 });
+
+describe('ChatPanel message formatting', () => {
+  it('formats assistant Markdown but shows user text exactly as typed', () => {
+    const createdAt = '2026-10-05T00:00:00.000Z';
+    render(
+      <ChatPanel
+        config={config}
+        initialMessages={[
+          { role: 'user', content: 'what is **this**', citations: [], createdAt },
+          { role: 'assistant', content: 'It is **bold**', citations: [], createdAt },
+        ]}
+        onSession={vi.fn()}
+        onCompleted={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('what is **this**')).toBeInTheDocument();
+    expect(screen.getByText('bold').tagName).toBe('STRONG');
+  });
+});

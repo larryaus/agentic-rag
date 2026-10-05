@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 import { KbApiStack } from '../lib/api-stack';
 import { KbAuthStack } from '../lib/auth-stack';
+import { KbBudgetStack } from '../lib/budget-stack';
+import { KbFrontendStack } from '../lib/frontend-stack';
 import { KbKnowledgeBaseStack } from '../lib/knowledge-base-stack';
 import { KbStorageStack } from '../lib/storage-stack';
 
@@ -19,7 +21,7 @@ function stacks(dimension = 1024): {
   const app = new App();
   const storage = new KbStorageStack(app, `Storage${dimension}`, {
     env,
-    frontendOrigin: 'http://localhost:5173',
+    frontendOrigins: ['http://localhost:5173'],
     embeddingDimension: dimension,
   });
   const knowledgeBase = new KbKnowledgeBaseStack(
@@ -37,12 +39,12 @@ function stacks(dimension = 1024): {
   );
   const auth = new KbAuthStack(app, `Auth${dimension}`, {
     env,
-    frontendOrigin: 'http://localhost:5173',
+    frontendOrigins: ['http://localhost:5173'],
     cognitoDomainPrefix: '',
   });
   const api = new KbApiStack(app, `Api${dimension}`, {
     env,
-    frontendOrigin: 'http://localhost:5173',
+    frontendOrigins: ['http://localhost:5173'],
     chatModelId: 'us.anthropic.test-model-v1:0',
     documentsBucket: storage.documentsBucket,
     conversationsTable: storage.conversationsTable,
@@ -142,6 +144,13 @@ describe('CDK stacks', () => {
     template.hasResourceProperties('AWS::S3Vectors::Index', {
       Dimension: 1024,
       DistanceMetric: 'cosine',
+      // Without these, chunks over 2 KB cannot be stored and ingestion fails.
+      MetadataConfiguration: {
+        NonFilterableMetadataKeys: [
+          'AMAZON_BEDROCK_TEXT',
+          'AMAZON_BEDROCK_METADATA',
+        ],
+      },
     });
   });
 
@@ -187,7 +196,18 @@ describe('CDK stacks', () => {
       expect(variables).not.toHaveProperty('AWS_REGION');
     }
     const routes = template.findResources('AWS::ApiGatewayV2::Route');
-    expect(Object.values(routes)).toHaveLength(5);
+    expect(Object.values(routes)).toHaveLength(6);
+    expect(
+      Object.values(routes).map(
+        (resource) => (resource.Properties as { RouteKey: string }).RouteKey,
+      ),
+    ).toContain('DELETE /v1/documents/{documentId}');
+    // A browser preflights DELETE, so the route is unreachable without this.
+    template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
+      CorsConfiguration: Match.objectLike({
+        AllowMethods: Match.arrayWith(['DELETE']),
+      }),
+    });
     Object.values(routes).forEach((resource) => {
       expect(resource.Properties).toEqual(
         expect.objectContaining({
@@ -201,7 +221,7 @@ describe('CDK stacks', () => {
     const app = new App();
     const storage = new KbStorageStack(app, 'Storage512Only', {
       env,
-      frontendOrigin: 'http://localhost:5173',
+      frontendOrigins: ['http://localhost:5173'],
       embeddingDimension: 512,
     });
     const knowledgeBase = new KbKnowledgeBaseStack(app, 'KnowledgeBase512Only', {
@@ -234,9 +254,10 @@ describe('CDK stacks', () => {
     );
   });
 
-  it('never grants obsolete ingestion-job APIs', () => {
+  it('never grants ingestion-job read APIs', () => {
+    // StartIngestionJob is absent from this list on purpose: Bedrock requires it for
+    // IngestKnowledgeBaseDocuments, and the exact-actions test pins where it is granted.
     const forbidden = new Set([
-      'bedrock:StartIngestionJob',
       'bedrock:GetIngestionJob',
       'bedrock:ListIngestionJobs',
     ]);
@@ -278,6 +299,7 @@ describe('CDK stacks', () => {
     ).toEqual(
       [
         'bedrock:IngestKnowledgeBaseDocuments',
+        'bedrock:StartIngestionJob',
         'dynamodb:GetItem',
         'dynamodb:UpdateItem',
         'kms:Decrypt',
@@ -305,9 +327,11 @@ describe('CDK stacks', () => {
       ),
     ).toEqual(
       [
+        'dynamodb:DeleteItem',
         'dynamodb:GetItem',
         'dynamodb:Query',
         'kms:Decrypt',
+        's3:DeleteObject',
         's3:GetObject',
       ].sort(),
     );
@@ -362,5 +386,153 @@ describe('CDK stacks', () => {
         ).toBe(true);
       }
     }
+  });
+
+  it('serves the frontend from a private bucket behind CloudFront', () => {
+    const template = Template.fromStack(
+      new KbFrontendStack(new App(), 'Frontend', { env }),
+    );
+    template.hasResourceProperties('AWS::S3::Bucket', {
+      PublicAccessBlockConfiguration: {
+        BlockPublicAcls: true,
+        BlockPublicPolicy: true,
+        IgnorePublicAcls: true,
+        RestrictPublicBuckets: true,
+      },
+    });
+    template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1);
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        DefaultRootObject: 'index.html',
+        DefaultCacheBehavior: Match.objectLike({
+          ViewerProtocolPolicy: 'redirect-to-https',
+        }),
+        // /callback has no object behind it; a private bucket answers 403, not 404.
+        CustomErrorResponses: [403, 404].map((ErrorCode) =>
+          Match.objectLike({
+            ErrorCode,
+            ResponseCode: 200,
+            ResponsePagePath: '/index.html',
+          }),
+        ),
+      }),
+    });
+  });
+
+  it('allows every frontend origin for sign-in and CORS', () => {
+    const app = new App();
+    const frontendOrigins = [
+      'http://localhost:5173',
+      'https://d111111abcdef8.cloudfront.net',
+    ];
+    const storage = new KbStorageStack(app, 'StorageOrigins', {
+      env,
+      frontendOrigins,
+      embeddingDimension: 1024,
+    });
+    const auth = new KbAuthStack(app, 'AuthOrigins', {
+      env,
+      frontendOrigins,
+      cognitoDomainPrefix: '',
+    });
+    const api = new KbApiStack(app, 'ApiOrigins', {
+      env,
+      frontendOrigins,
+      chatModelId: 'au.anthropic.claude-sonnet-4-6',
+      documentsBucket: storage.documentsBucket,
+      conversationsTable: storage.conversationsTable,
+      dataKey: storage.dataKey,
+      knowledgeBaseId: 'KB12345678',
+      dataSourceId: 'DS12345678',
+      userPool: auth.userPool,
+      userPoolClient: auth.userPoolClient,
+    });
+
+    Template.fromStack(auth).hasResourceProperties(
+      'AWS::Cognito::UserPoolClient',
+      {
+        CallbackURLs: frontendOrigins.map((origin) => `${origin}/callback`),
+        LogoutURLs: frontendOrigins,
+      },
+    );
+    Template.fromStack(storage).hasResourceProperties('AWS::S3::Bucket', {
+      CorsConfiguration: {
+        CorsRules: [Match.objectLike({ AllowedOrigins: frontendOrigins })],
+      },
+    });
+    const apiTemplate = Template.fromStack(api);
+    apiTemplate.hasResourceProperties('AWS::ApiGatewayV2::Api', {
+      CorsConfiguration: Match.objectLike({ AllowOrigins: frontendOrigins }),
+    });
+    apiTemplate.hasResourceProperties('AWS::Lambda::Url', {
+      Cors: Match.objectLike({ AllowOrigins: frontendOrigins }),
+    });
+  });
+
+  it('grants the chat role both the regional profile and its foundation model', () => {
+    const app = new App();
+    const storage = new KbStorageStack(app, 'StorageModel', {
+      env,
+      frontendOrigins: ['http://localhost:5173'],
+      embeddingDimension: 1024,
+    });
+    const auth = new KbAuthStack(app, 'AuthModel', {
+      env,
+      frontendOrigins: ['http://localhost:5173'],
+      cognitoDomainPrefix: '',
+    });
+    const api = new KbApiStack(app, 'ApiModel', {
+      env,
+      frontendOrigins: ['http://localhost:5173'],
+      chatModelId: 'au.anthropic.claude-sonnet-4-6',
+      documentsBucket: storage.documentsBucket,
+      conversationsTable: storage.conversationsTable,
+      dataKey: storage.dataKey,
+      knowledgeBaseId: 'KB12345678',
+      dataSourceId: 'DS12345678',
+      userPool: auth.userPool,
+      userPoolClient: auth.userPoolClient,
+    });
+    const rendered = JSON.stringify(statements(Template.fromStack(api)));
+    expect(rendered).toContain(
+      ':inference-profile/au.anthropic.claude-sonnet-4-6',
+    );
+    expect(rendered).toContain(
+      '::foundation-model/anthropic.claude-sonnet-4-6',
+    );
+  });
+
+  it('emails the owner as account spend approaches and passes the monthly budget', () => {
+    const template = Template.fromStack(
+      new KbBudgetStack(new App(), 'Budget', {
+        env,
+        alertEmail: 'owner@example.com',
+        monthlyLimitUsd: 10,
+      }),
+    );
+    const subscribers = [
+      { SubscriptionType: 'EMAIL', Address: 'owner@example.com' },
+    ];
+    const alert = (NotificationType: string, Threshold: number) => ({
+      Notification: {
+        NotificationType,
+        ComparisonOperator: 'GREATER_THAN',
+        Threshold,
+        ThresholdType: 'PERCENTAGE',
+      },
+      Subscribers: subscribers,
+    });
+    template.hasResourceProperties('AWS::Budgets::Budget', {
+      Budget: Match.objectLike({
+        BudgetType: 'COST',
+        TimeUnit: 'MONTHLY',
+        BudgetLimit: { Amount: 10, Unit: 'USD' },
+      }),
+      NotificationsWithSubscribers: [
+        alert('ACTUAL', 80),
+        alert('ACTUAL', 100),
+        alert('FORECASTED', 100),
+      ],
+    });
   });
 });
