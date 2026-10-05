@@ -1,87 +1,87 @@
-# 客户支持值班手册
+# Customer Support On-Call Runbook
 
-## 一、服务范围
+## 1. Scope of Service
 
-客户支持团队负责处理产品使用咨询、账号与权限问题、计费问题、文件上传失败、API 调用异常以及企业客户的紧急工单。
+The customer support team handles product usage questions, account and permission issues, billing issues, failed file uploads, API errors, and urgent tickets from enterprise customers.
 
-不在一线支持范围内的问题包括：
-- 客户自有网络或设备故障；
-- 第三方系统接口变更；
-- 未签署合同的定制开发需求；
-- 法务、采购、发票抬头变更等非技术审批事项。
+Issues outside the scope of front-line support include:
+- Faults in the customer's own network or devices;
+- Interface changes in third-party systems;
+- Custom development requests not covered by a signed contract;
+- Non-technical approvals such as legal, procurement, or changes to the name on an invoice.
 
-遇到超出范围的问题，应说明可协助的边界，并转交对应团队。
+When an issue is out of scope, explain the limits of what support can help with and hand it over to the responsible team.
 
-## 二、工单优先级
+## 2. Ticket Priorities
 
-### P0：重大故障
+### P0: Major incident
 
-满足任一条件即定义为 P0：
-- 生产环境大面积不可用；
-- 多个企业客户无法登录或检索文档；
-- 数据误删、越权访问或疑似安全事件；
-- 付费客户 API 错误率连续 10 分钟高于 30%。
+A ticket is P0 if any one of these applies:
+- The production environment is widely unavailable;
+- Multiple enterprise customers cannot sign in or search documents;
+- Accidental data deletion, unauthorized access, or a suspected security incident;
+- The API error rate for paying customers stays above 30% for 10 consecutive minutes.
 
-响应要求：5 分钟内确认，15 分钟内升级到值班工程师，30 分钟内给出首次状态更新。
+Response requirements: acknowledge within 5 minutes, escalate to the on-call engineer within 15 minutes, and give the first status update within 30 minutes.
 
-### P1：高优先级问题
+### P1: High priority
 
-典型场景：
-- 单个企业客户无法使用核心功能；
-- 文件上传或解析持续失败；
-- 账单金额明显异常；
-- 客户要求恢复最近 7 天内删除的文档。
+Typical cases:
+- A single enterprise customer cannot use a core feature;
+- File upload or parsing keeps failing;
+- A bill amount is clearly wrong;
+- A customer asks to restore a document deleted within the last 7 days.
 
-响应要求：30 分钟内确认，4 小时内给出处理方案或明确下一步。
+Response requirements: acknowledge within 30 minutes, and provide a resolution plan or a clear next step within 4 hours.
 
-### P2：普通问题
+### P2: Normal
 
-典型场景：
-- 功能使用咨询；
-- 成员邀请失败；
-- 修改公司名称、联系人或通知邮箱；
-- 查询套餐额度、API 限流规则或数据导出步骤。
+Typical cases:
+- Questions about how to use a feature;
+- Failed member invitations;
+- Changing the company name, contact person or notification email;
+- Questions about plan quotas, API rate limits or data export steps.
 
-响应要求：1 个工作日内回复。
+Response requirement: reply within 1 working day.
 
-## 三、标准处理流程
+## 3. Standard Handling Process
 
-1. 查看工单来源、客户等级、历史沟通记录与最近 24 小时系统事件。
-2. 复现问题或收集证据，包括请求 ID、账号邮箱、时间范围、文件名、浏览器版本与错误截图。
-3. 判断优先级，并在工单中写明判断依据。
-4. 使用标准模板回复客户，避免承诺未确认的修复时间。
-5. 需要工程介入时，附上最小复现步骤、日志链接与影响范围。
-6. 问题解决后，确认客户可正常使用，再关闭工单。
+1. Review the ticket source, customer tier, communication history and system events from the last 24 hours.
+2. Reproduce the issue or gather evidence, including the request ID, account email, time range, file name, browser version and a screenshot of the error.
+3. Decide the priority and record the reasoning in the ticket.
+4. Reply to the customer using the standard templates, and avoid promising a fix time that has not been confirmed.
+5. When engineering needs to step in, attach minimal reproduction steps, links to logs and the scope of impact.
+6. Once the issue is resolved, confirm that the customer can use the product normally before closing the ticket.
 
-## 四、常用回复模板
+## 4. Common Reply Templates
 
-### 文件上传失败
+### File upload failure
 
-您好，我们已收到您的反馈。请先确认文件格式是否为 PDF、Markdown、TXT 或 HTML，且文件大小未超过当前套餐限制。若仍然失败，请提供上传时间、文件名、错误截图和页面上的请求 ID，我们会进一步排查。
+Hello, we have received your report. Please first confirm that the file is a PDF, Markdown, TXT or HTML file and that its size does not exceed the limit for your current plan. If it still fails, please send us the upload time, file name, a screenshot of the error and the request ID shown on the page, and we will investigate further.
 
-### API 限流
+### API rate limiting
 
-您好，当前请求触发了套餐限流策略。Pro 套餐默认限制为 60 RPM 与每分钟 10000 tokens；Enterprise 套餐可单独配置。若业务存在峰值调用需求，请提供预计并发、调用时间段与使用场景，我们可以协助评估扩容方案。
+Hello, your requests have triggered the rate limit for your plan. The Pro plan is limited by default to 60 RPM and 10,000 tokens per minute; the Enterprise plan can be configured separately. If your workload has peak demand, please send us the expected concurrency, the time window and the use case, and we can help assess options for raising the limit.
 
-### 数据删除恢复
+### Data deletion and recovery
 
-您好，账号或文档删除后会进入 30 天宽限期。请提供要恢复的数据类型、删除时间、操作人账号以及工作空间名称。我们会在验证管理员权限后提交恢复申请。
+Hello, a deleted account or document enters a 30-day grace period. Please tell us the type of data to restore, when it was deleted, the account that performed the deletion and the workspace name. We will submit a restore request once we have verified administrator permission.
 
-## 五、升级规则
+## 5. Escalation Rules
 
-- 涉及安全、隐私、越权访问的问题，立即升级给安全负责人。
-- 涉及生产错误率、服务不可用、任务队列积压的问题，升级给值班工程师。
-- 涉及合同、退款、对公转账或发票争议的问题，升级给商务运营。
-- 涉及媒体、监管、法律函件的问题，升级给法务与公司负责人。
+- Issues involving security, privacy or unauthorized access are escalated immediately to the security lead.
+- Issues involving production error rates, service unavailability or a backlog in the task queue are escalated to the on-call engineer.
+- Issues involving contracts, refunds, bank transfers or invoice disputes are escalated to business operations.
+- Issues involving the media, regulators or legal letters are escalated to legal and company leadership.
 
-升级时必须包含：客户名称、问题摘要、影响范围、首次发生时间、已采取动作、期望支持事项。
+An escalation must include: the customer name, a summary of the issue, the scope of impact, when it first occurred, the actions already taken, and the support being requested.
 
-## 六、关闭标准
+## 6. Closing Criteria
 
-工单满足以下条件后可以关闭：
-- 客户明确确认问题已解决；
-- 已连续 3 个工作日未收到客户补充信息；
-- 问题不属于支持范围，且已告知正确处理渠道；
-- 工程团队确认缺陷已修复，并已向客户提供验证步骤。
+A ticket can be closed when any of these applies:
+- The customer has explicitly confirmed that the issue is resolved;
+- No further information has been received from the customer for 3 consecutive working days;
+- The issue is out of scope for support and the customer has been told the correct channel;
+- The engineering team has confirmed that the defect is fixed and the customer has been given steps to verify it.
 
-关闭工单前，应检查内部备注是否完整，避免遗漏排查结论和后续改进项。
+Before closing a ticket, check that the internal notes are complete, so that investigation findings and follow-up improvements are not lost.
