@@ -72,6 +72,7 @@ export type ReconcilerConfig = {
   dataSourceId: string;
   docsBucket: string;
   abandonedUploadMinutes: number;
+  maxUploadBytes: number;
 };
 
 export function loadReconcilerConfig(): ReconcilerConfig {
@@ -81,6 +82,7 @@ export function loadReconcilerConfig(): ReconcilerConfig {
     dataSourceId: required('DATA_SOURCE_ID'),
     docsBucket: required('DOCS_BUCKET'),
     abandonedUploadMinutes: positiveInteger('ABANDONED_UPLOAD_MINUTES', 10),
+    maxUploadBytes: positiveInteger('MAX_UPLOAD_BYTES', 26_214_400),
   };
 }
 

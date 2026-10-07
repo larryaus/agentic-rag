@@ -129,18 +129,24 @@ describe('ingest handler', () => {
     expect(bedrock.calls()).toHaveLength(0);
   });
 
-  it('leaves an ambiguous Bedrock failure for reconciliation and never rethrows', async () => {
+  it('retains an ambiguous Bedrock failure for reconciliation and permits invocation retry', async () => {
     bedrock
       .on(IngestKnowledgeBaseDocumentsCommand)
       .rejects(new Error('parser failed'));
 
     await expect(
-      handleIngest(
-        event(`uploads/user/${documentId}/doc.md`),
-        context,
-      ),
-    ).resolves.toBeUndefined();
+      handleIngest(event(`uploads/user/${documentId}/doc.md`), context),
+    ).rejects.toThrow('parser failed');
     expect(ddb.commandCalls(UpdateCommand)).toHaveLength(0);
+  });
+
+  it('permits retry when the document record cannot be read', async () => {
+    ddb.on(GetCommand).rejects(new Error('temporary DynamoDB failure'));
+
+    await expect(
+      handleIngest(event(`uploads/user/${documentId}/doc.md`), context),
+    ).rejects.toThrow('temporary DynamoDB failure');
+    expect(bedrock.calls()).toHaveLength(0);
   });
 
   it('ignores a reused upload URL once the document has advanced', async () => {

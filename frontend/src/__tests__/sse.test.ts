@@ -1,7 +1,34 @@
 import type { SseEvent } from '@kb/shared';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { consumeSse } from '../api/sse';
+import { consumeSse, streamChat } from '../api/sse';
+
+afterEach(() => vi.unstubAllGlobals());
+
+it('passes cancellation through to the streaming fetch', async () => {
+  const controller = new AbortController();
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(
+        'event: done\ndata: {"sessionId":"s","stopReason":"end_turn","usage":{"inputTokens":1,"outputTokens":1}}\n\n',
+      ),
+    );
+  vi.stubGlobal('fetch', fetch);
+
+  await streamChat({
+    url: 'https://chat.test',
+    accessToken: 'token',
+    message: 'question',
+    signal: controller.signal,
+    onEvent: () => undefined,
+  });
+
+  expect(fetch).toHaveBeenCalledWith(
+    'https://chat.test',
+    expect.objectContaining({ signal: controller.signal }),
+  );
+});
 
 const encoder = new TextEncoder();
 

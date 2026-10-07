@@ -44,6 +44,7 @@ type FunctionOptions = {
   timeout: Duration;
   environment: Record<string, string>;
   reservedConcurrentExecutions?: number;
+  retryAttempts?: number;
 };
 
 export class KbApiStack extends Stack {
@@ -85,6 +86,9 @@ export class KbApiStack extends Stack {
               reservedConcurrentExecutions:
                 options.reservedConcurrentExecutions,
             }),
+        ...(options.retryAttempts === undefined
+          ? {}
+          : { retryAttempts: options.retryAttempts }),
         bundling: {
           minify: true,
           sourceMap: true,
@@ -130,12 +134,15 @@ export class KbApiStack extends Stack {
       memorySize: 512,
       timeout: Duration.minutes(2),
       reservedConcurrentExecutions: 1,
+      // The minute schedule retries failed sweeps; async retries would queue duplicates.
+      retryAttempts: 0,
       environment: {
         TABLE_NAME: props.conversationsTable.tableName,
         KNOWLEDGE_BASE_ID: props.knowledgeBaseId,
         DATA_SOURCE_ID: props.dataSourceId,
         DOCS_BUCKET: props.documentsBucket.bucketName,
         ABANDONED_UPLOAD_MINUTES: '10',
+        MAX_UPLOAD_BYTES: '26214400',
       },
     });
     const presign = createFunction({
@@ -248,7 +255,11 @@ export class KbApiStack extends Stack {
 
     reconciler.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['bedrock:GetKnowledgeBaseDocuments'],
+        actions: [
+          'bedrock:GetKnowledgeBaseDocuments',
+          'bedrock:IngestKnowledgeBaseDocuments',
+          'bedrock:StartIngestionJob',
+        ],
         resources: [knowledgeBaseArn],
       }),
     );
@@ -260,8 +271,16 @@ export class KbApiStack extends Stack {
     );
     reconciler.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['s3:DeleteObject'],
+        actions: ['s3:GetObject', 's3:DeleteObject'],
         resources: [uploadObjects],
+      }),
+    );
+    // S3 returns 404 for a missing HEAD only when the caller can list the
+    // bucket; otherwise a missing object and access denial both return 403.
+    reconciler.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:ListBucket'],
+        resources: [props.documentsBucket.bucketArn],
       }),
     );
     reconciler.addToRolePolicy(

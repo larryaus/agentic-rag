@@ -55,6 +55,7 @@ export type DocumentItem = {
   sizeBytes: number;
   status: 'UPLOADING' | 'PENDING' | 'INGESTING' | 'READY' | 'FAILED';
   ingestionJobId?: string;
+  ingestionRecoveryAttempts?: number;
   errorMessage?: string;
   uploadedAt: string;
   updatedAt: string;

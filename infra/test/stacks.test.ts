@@ -113,6 +113,18 @@ const primaryTemplates = {
 };
 
 describe('CDK stacks', () => {
+  it('relies on the schedule to retry the reconciler instead of Lambda async retries', () => {
+    const functions = primaryTemplates.api.findResources('AWS::Lambda::Function');
+    const reconcilerId = Object.keys(functions).find((id) =>
+      id.startsWith('ReconcilerFunction'),
+    );
+    expect(reconcilerId).toBeDefined();
+    primaryTemplates.api.hasResourceProperties('AWS::Lambda::EventInvokeConfig', {
+      FunctionName: { Ref: reconcilerId },
+      MaximumRetryAttempts: 0,
+    });
+  });
+
   it('synthesizes storage security, PITR, TTL, EventBridge, and vectors', () => {
     const template = primaryTemplates.storage;
     template.hasResourceProperties('AWS::S3::Bucket', {
@@ -314,11 +326,15 @@ describe('CDK stacks', () => {
     ).toEqual(
       [
         'bedrock:GetKnowledgeBaseDocuments',
+        'bedrock:IngestKnowledgeBaseDocuments',
+        'bedrock:StartIngestionJob',
         'dynamodb:Query',
         'dynamodb:UpdateItem',
         'kms:Decrypt',
         'kms:GenerateDataKey',
         's3:DeleteObject',
+        's3:GetObject',
+        's3:ListBucket',
       ].sort(),
     );
     expect(

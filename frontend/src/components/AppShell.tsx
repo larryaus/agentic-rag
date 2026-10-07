@@ -1,5 +1,5 @@
 import type { MessageView, SessionDetail } from '@kb/shared';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import type { AppConfig } from '../config';
 import { apiFetch } from '../api/http';
@@ -8,18 +8,36 @@ import { ChatPanel } from './ChatPanel';
 import { DocumentPanel } from './DocumentPanel';
 import { SessionList } from './SessionList';
 
-export function AppShell(props: {
-  config: AppConfig;
-}): React.JSX.Element {
+export function AppShell(props: { config: AppConfig }): React.JSX.Element {
   const [sessionId, setSessionId] = useState<string>();
   const [messages, setMessages] = useState<MessageView[]>([]);
   const [sessionVersion, setSessionVersion] = useState(0);
+  const [conversationVersion, setConversationVersion] = useState(0);
+  const [loadingSession, setLoadingSession] = useState(false);
+  const [sessionError, setSessionError] = useState('');
+  const selectionVersion = useRef(0);
 
   const selectSession = async (id: string): Promise<void> => {
-    const response = await apiFetch(props.config, `/v1/sessions/${id}`);
-    const detail = (await response.json()) as SessionDetail;
-    setSessionId(id);
-    setMessages(detail.messages);
+    const selection = ++selectionVersion.current;
+    setLoadingSession(true);
+    setSessionError('');
+    setConversationVersion((value) => value + 1);
+    try {
+      const response = await apiFetch(props.config, `/v1/sessions/${id}`);
+      const detail = (await response.json()) as SessionDetail;
+      if (selection !== selectionVersion.current) return;
+      setSessionId(id);
+      setMessages(detail.messages);
+    } catch (cause) {
+      if (selection !== selectionVersion.current) return;
+      setSessionId(undefined);
+      setMessages([]);
+      setSessionError(
+        cause instanceof Error ? cause.message : 'Could not load conversation',
+      );
+    } finally {
+      if (selection === selectionVersion.current) setLoadingSession(false);
+    }
   };
 
   return (
@@ -40,6 +58,10 @@ export function AppShell(props: {
           refreshVersion={sessionVersion}
           onSelect={(id) => void selectSession(id)}
           onNew={() => {
+            selectionVersion.current += 1;
+            setLoadingSession(false);
+            setSessionError('');
+            setConversationVersion((value) => value + 1);
             setSessionId(undefined);
             setMessages([]);
           }}
@@ -47,13 +69,23 @@ export function AppShell(props: {
         <DocumentPanel config={props.config} />
       </aside>
       <main>
-        <ChatPanel
-          config={props.config}
-          {...(sessionId === undefined ? {} : { sessionId })}
-          initialMessages={messages}
-          onSession={setSessionId}
-          onCompleted={() => setSessionVersion((value) => value + 1)}
-        />
+        {sessionError === '' ? null : (
+          <p role="alert" className="error-banner">
+            {sessionError}
+          </p>
+        )}
+        {loadingSession ? (
+          <p role="status">Loading conversation…</p>
+        ) : (
+          <ChatPanel
+            key={conversationVersion}
+            config={props.config}
+            {...(sessionId === undefined ? {} : { sessionId })}
+            initialMessages={messages}
+            onSession={setSessionId}
+            onCompleted={() => setSessionVersion((value) => value + 1)}
+          />
+        )}
       </main>
     </div>
   );

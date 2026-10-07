@@ -76,9 +76,11 @@ export async function streamChat(opts: {
   sessionId?: string;
   message: string;
   onEvent: (event: SseEvent) => void;
+  signal?: AbortSignal;
 }): Promise<void> {
   const response = await fetch(opts.url, {
     method: 'POST',
+    ...(opts.signal === undefined ? {} : { signal: opts.signal }),
     headers: {
       authorization: `Bearer ${opts.accessToken}`,
       'content-type': 'application/json',

@@ -1,9 +1,8 @@
-import { IngestKnowledgeBaseDocumentsCommand } from '@aws-sdk/client-bedrock-agent';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { Context, EventBridgeEvent } from 'aws-lambda';
 
-import { bedrockAgentClient, dynamoClient, s3Client } from '../lib/clients';
+import { dynamoClient, s3Client } from '../lib/clients';
 import { loadIngestConfig } from '../lib/config';
 import {
   documentPk,
@@ -11,6 +10,7 @@ import {
   type DocumentItem,
 } from '../lib/ddb';
 import { errorMessage } from '../lib/errors';
+import { ingestDocument } from '../lib/ingestion';
 import { log, withLogContext } from '../lib/logger';
 
 type ObjectCreatedDetail = {
@@ -153,27 +153,7 @@ export async function handleIngest(
       }
 
       try {
-        await bedrockAgentClient.send(
-          new IngestKnowledgeBaseDocumentsCommand({
-            knowledgeBaseId: cfg.knowledgeBaseId,
-            dataSourceId: cfg.dataSourceId,
-            clientToken: `ingest-${documentId}`,
-            documents: [
-              {
-                content: {
-                  dataSourceType: 'S3',
-                  s3: { s3Location: { uri: `s3://${cfg.docsBucket}/${key}` } },
-                },
-                metadata: {
-                  type: 'S3_LOCATION',
-                  s3Location: {
-                    uri: `s3://${cfg.docsBucket}/${key}.metadata.json`,
-                  },
-                },
-              },
-            ],
-          }),
-        );
+        await ingestDocument({ ...cfg, documentId, key });
       } catch (error) {
         // A transport failure can arrive after Bedrock accepted the request.
         // Keep the row pollable; retries reuse the same idempotency token.
@@ -181,7 +161,7 @@ export async function handleIngest(
           documentId,
           error: errorMessage(error),
         });
-        return;
+        throw error;
       }
 
       try {
@@ -211,9 +191,10 @@ export async function handleIngest(
         }
       }
     } catch (error) {
-      log('error', 'ingest event failed without retry', {
+      log('error', 'ingest event failed; allowing invocation retry', {
         error: errorMessage(error),
       });
+      throw error;
     } finally {
       log('info', 'ingest event completed', {
         durationMs: Date.now() - started,
