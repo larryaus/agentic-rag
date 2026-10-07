@@ -1,5 +1,6 @@
 import {
   CfnOutput,
+  DefaultStackSynthesizer,
   Duration,
   RemovalPolicy,
   Stack,
@@ -12,9 +13,14 @@ import {
 import type { Construct } from 'constructs';
 
 const GITHUB_OIDC_HOST = 'token.actions.githubusercontent.com';
+/** GitHub environment whose required reviewer approves each infrastructure deploy. */
+const GITHUB_DEPLOY_ENVIRONMENT = 'production';
 
 export type KbFrontendStackProps = StackProps & {
-  /** `owner/name` of the GitHub repository whose CI may publish the site. */
+  /**
+   * `owner/name` of the GitHub repository whose CI may publish the site and deploy
+   * the stacks.
+   */
   githubRepository?: string;
   /** Stacks whose outputs the publish job reads to build the frontend. */
   outputStacks?: string[];
@@ -71,23 +77,27 @@ export class KbFrontendStack extends Stack {
       value: distribution.distributionId,
     });
 
-    if (props.githubRepository !== undefined && props.githubRepository !== '') {
-      // GitHub Actions exchanges a short-lived OIDC token for this role, so the
-      // repository holds no AWS keys. The subject condition is the access control:
-      // only workflow runs on this repository's main branch match it, which excludes
-      // pull requests and forks.
+    const repository = props.githubRepository;
+    if (repository !== undefined && repository !== '') {
+      // GitHub Actions exchanges a short-lived OIDC token for these roles, so the
+      // repository holds no AWS keys. The subject condition is the access control.
       const github = new iam.OidcProviderNative(this, 'GithubOidc', {
         url: `https://${GITHUB_OIDC_HOST}`,
         clientIds: ['sts.amazonaws.com'],
       });
-      const publishRole = new iam.Role(this, 'PublishRole', {
-        roleName: 'kb-assistant-github-publish',
-        assumedBy: new iam.WebIdentityPrincipal(github.oidcProviderArn, {
+      const githubRuns = (subject: string): iam.WebIdentityPrincipal =>
+        new iam.WebIdentityPrincipal(github.oidcProviderArn, {
           StringEquals: {
             [`${GITHUB_OIDC_HOST}:aud`]: 'sts.amazonaws.com',
-            [`${GITHUB_OIDC_HOST}:sub`]: `repo:${props.githubRepository}:ref:refs/heads/main`,
+            [`${GITHUB_OIDC_HOST}:sub`]: `repo:${repository}:${subject}`,
           },
-        }),
+        });
+      // Only workflow runs on this repository's main branch carry this subject, which
+      // excludes pull requests and forks.
+      const mainBranchRuns = githubRuns('ref:refs/heads/main');
+      const publishRole = new iam.Role(this, 'PublishRole', {
+        roleName: 'kb-assistant-github-publish',
+        assumedBy: mainBranchRuns,
       });
       publishRole.addToPolicy(
         new iam.PolicyStatement({
@@ -119,6 +129,40 @@ export class KbFrontendStack extends Stack {
         }),
       );
       new CfnOutput(this, 'PublishRoleArn', { value: publishRole.roleArn });
+
+      // CI deploys through the roles `cdk bootstrap` created rather than holding
+      // permissions of its own, so it can do exactly what a local `cdk deploy` can.
+      const bootstrapRole = (name: string): string =>
+        `arn:${this.partition}:iam::${this.account}:role/cdk-${DefaultStackSynthesizer.DEFAULT_QUALIFIER}-${name}-role-${this.account}-${this.region}`;
+
+      // Read-only: enough for `cdk diff` to compare main against the deployed stacks.
+      const planRole = new iam.Role(this, 'PlanRole', {
+        roleName: 'kb-assistant-github-plan',
+        assumedBy: mainBranchRuns,
+      });
+      planRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ['sts:AssumeRole'],
+          resources: [bootstrapRole('lookup')],
+        }),
+      );
+      new CfnOutput(this, 'PlanRoleArn', { value: planRole.roleArn });
+
+      // A job that names a GitHub environment gets the environment as its subject
+      // instead of the branch, and GitHub issues that token only after the
+      // environment's required reviewer approves. Trusting that subject alone is what
+      // makes the approval a real gate: a run on main cannot reach this role without it.
+      const deployRole = new iam.Role(this, 'DeployRole', {
+        roleName: 'kb-assistant-github-deploy',
+        assumedBy: githubRuns(`environment:${GITHUB_DEPLOY_ENVIRONMENT}`),
+      });
+      deployRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ['sts:AssumeRole'],
+          resources: ['deploy', 'file-publishing', 'lookup'].map(bootstrapRole),
+        }),
+      );
+      new CfnOutput(this, 'DeployRoleArn', { value: deployRole.roleArn });
     }
   }
 }

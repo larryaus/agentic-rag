@@ -72,7 +72,7 @@ Ask me for a demo account and I will create one for you.
 | Data protection | KMS customer-managed key, private S3, scoped IAM | Encryption at rest, least privilege per Lambda |
 | State | DynamoDB single-table design | Per-user ownership checks, TTL, pagination |
 | Operations | CloudWatch Logs and alarms, X-Ray, AWS Budgets | Tracing, error alarms, a spend alert |
-| Delivery | AWS CDK v2 (six stacks), CloudFront, GitHub Actions | Infrastructure as code, CI with keyless publishing through OIDC |
+| Delivery | AWS CDK v2 (six stacks), CloudFront, GitHub Actions | Infrastructure as code, CI and approved deploys with keyless access through OIDC |
 
 ## Design decisions
 
@@ -146,16 +146,37 @@ npm run verify
 production frontend build, an offline `cdk synth`, and the Python dataset tests. No test
 needs AWS credentials.
 
-## Continuous integration
+## Continuous integration and deployment
 
 GitHub Actions (`.github/workflows/ci.yml`) runs `npm run verify` on every pull request
-and every push to `main`. After a push to `main` passes, a second job rebuilds the
-frontend against the deployed stacks' outputs and publishes it to CloudFront.
+and every push to `main`. After a push to `main` passes, three more jobs run in order:
 
-The publish job holds no AWS keys. It exchanges GitHub's OIDC token for a short-lived
-IAM role that trusts only this repository's `main` branch and can do three things: write
-to the site bucket, invalidate the distribution, and read the stack outputs.
-Infrastructure changes are still deployed by hand with `cdk deploy`.
+1. **Plan** runs `cdk diff` against the deployed stacks and writes the result to the run
+   summary.
+2. **Deploy** runs `cdk deploy --all`, but only when the plan found changes, and only
+   after a reviewer approves the run in the `production` GitHub environment.
+3. **Publish frontend** rebuilds the frontend against the deployed stacks' outputs and
+   publishes it to CloudFront. It waits for the deploy, so the frontend never goes out
+   ahead of its backend, and it does not run if the deploy fails or is rejected.
+
+A push that changes no infrastructure skips the deploy and its approval and publishes
+straight away.
+
+No job holds AWS keys. Each exchanges GitHub's OIDC token for a short-lived IAM role:
+
+| Role | Trusted for | Can do |
+|---|---|---|
+| Plan | runs on `main` | read the deployed stacks, through the CDK lookup role |
+| Deploy | runs approved into the `production` environment | deploy, through the CDK bootstrap roles |
+| Publish | runs on `main` | write to the site bucket, invalidate the distribution, read the stack outputs |
+
+The deploy role is as powerful as a local `cdk deploy`, which is why it trusts the
+environment rather than the branch: GitHub issues that token only after the approval. A
+run whose commit is no longer the tip of `main` refuses to deploy, so approving an old
+run cannot roll the stacks back.
+
+The budget stack needs its alert address at deploy time, so CI leaves it alone; change it
+with a local `cdk deploy -c budgetAlertEmail=...`.
 
 ## Repository layout
 
@@ -202,10 +223,17 @@ aws cognito-idp admin-create-user \
 npm run frontend:publish    # builds the UI and publishes it to CloudFront
 ```
 
-To let CI publish the frontend from your own fork, set `githubRepository` in
-`infra/cdk.json` to `owner/name` before deploying, then add two repository variables:
-`AWS_PUBLISH_ROLE_ARN` (the `PublishRoleArn` output) and `AWS_REGION`. Leave
-`githubRepository` empty to create no CI access at all.
+To let CI deploy and publish from your own fork, set `githubRepository` in
+`infra/cdk.json` to `owner/name` before deploying, then:
+
+- add four repository variables: `AWS_REGION`, and `AWS_PLAN_ROLE_ARN`,
+  `AWS_DEPLOY_ROLE_ARN` and `AWS_PUBLISH_ROLE_ARN` from the stack outputs of the same
+  names;
+- create a GitHub environment named `production`, add yourself as a required reviewer,
+  and limit its deployment branches to `main`.
+
+Setting only `AWS_PUBLISH_ROLE_ARN` publishes the frontend without deploying
+infrastructure. Leave `githubRepository` empty to create no CI access at all.
 
 `budgetAlertEmail` is optional. When set, it creates an AWS Budget that emails at 80% and
 100% of `monthlyBudgetUsd` (default 10) and when the forecast passes the limit. It is an
@@ -243,4 +271,4 @@ Not built yet, with the hooks already in place:
 - A human-approval step for sensitive actions
 - Token, latency and cost dashboards
 - A regression runner over the golden dataset in `evals/`
-- Automated infrastructure deploys, WAF and a custom domain
+- WAF and a custom domain
