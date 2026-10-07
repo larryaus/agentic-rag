@@ -96,6 +96,52 @@ function actionsForRole(
   return actions;
 }
 
+function assumableRoles(template: SynthTemplate, rolePrefix: string): string[] {
+  const roles = template.findResources('AWS::IAM::Role');
+  const roleId = Object.keys(roles).find((id) => id.startsWith(rolePrefix));
+  expect(roleId).toBeDefined();
+  const policies = template.findResources('AWS::IAM::Policy');
+  return Object.values(policies)
+    .flatMap((resource) => {
+      const properties = resource.Properties as {
+        Roles?: Array<{ Ref?: string }>;
+        PolicyDocument?: {
+          Statement?: Array<{ Action?: unknown; Resource?: unknown }>;
+        };
+      };
+      if (!properties.Roles?.some((role) => role.Ref === roleId)) return [];
+      return (properties.PolicyDocument?.Statement ?? []).flatMap(
+        (statement) => {
+          expect(statement.Action).toBe('sts:AssumeRole');
+          return [
+            ...JSON.stringify(statement.Resource).matchAll(
+              /role\/([A-Za-z0-9-]+)/g,
+            ),
+          ].map((match) => match[1] ?? '');
+        },
+      );
+    })
+    .sort();
+}
+
+function githubTrust(subject: string): Record<string, unknown> {
+  return {
+    AssumeRolePolicyDocument: Match.objectLike({
+      Statement: [
+        Match.objectLike({
+          Action: 'sts:AssumeRoleWithWebIdentity',
+          Condition: {
+            StringEquals: {
+              'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
+              'token.actions.githubusercontent.com:sub': subject,
+            },
+          },
+        }),
+      ],
+    }),
+  };
+}
+
 function applicationActions(actions: Set<string>): string[] {
   return [...actions]
     .filter(
@@ -593,6 +639,44 @@ describe('CDK stacks', () => {
     }
   });
 
+  it('lets main-branch runs read the deployed stacks to plan a deploy, and nothing more', () => {
+    const template = Template.fromStack(
+      new KbFrontendStack(new App(), 'FrontendPlan', {
+        env,
+        githubRepository: 'octo/kb',
+        outputStacks: ['KbFrontendStack'],
+      }),
+    );
+    template.hasResourceProperties('AWS::IAM::Role', {
+      RoleName: 'kb-assistant-github-plan',
+      ...githubTrust('repo:octo/kb:ref:refs/heads/main'),
+    });
+    expect(assumableRoles(template, 'PlanRole')).toEqual([
+      'cdk-hnb659fds-lookup-role-123456789012-us-east-1',
+    ]);
+  });
+
+  it('lets only runs approved into the production environment deploy the stacks', () => {
+    const template = Template.fromStack(
+      new KbFrontendStack(new App(), 'FrontendDeploy', {
+        env,
+        githubRepository: 'octo/kb',
+        outputStacks: ['KbFrontendStack'],
+      }),
+    );
+    // The environment subject replaces the branch subject, so a run on main cannot
+    // take this role until the environment's reviewer has approved it.
+    template.hasResourceProperties('AWS::IAM::Role', {
+      RoleName: 'kb-assistant-github-deploy',
+      ...githubTrust('repo:octo/kb:environment:production'),
+    });
+    expect(assumableRoles(template, 'DeployRole')).toEqual([
+      'cdk-hnb659fds-deploy-role-123456789012-us-east-1',
+      'cdk-hnb659fds-file-publishing-role-123456789012-us-east-1',
+      'cdk-hnb659fds-lookup-role-123456789012-us-east-1',
+    ]);
+  });
+
   it('creates no CI access unless a repository is configured', () => {
     const template = Template.fromStack(
       new KbFrontendStack(new App(), 'FrontendNoCi', { env }),
@@ -600,7 +684,7 @@ describe('CDK stacks', () => {
     template.resourceCountIs('AWS::IAM::OIDCProvider', 0);
     expect(
       Object.keys(template.findResources('AWS::IAM::Role')).filter((id) =>
-        id.startsWith('PublishRole'),
+        /^(Publish|Plan|Deploy)Role/.test(id),
       ),
     ).toHaveLength(0);
   });

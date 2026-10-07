@@ -30,15 +30,104 @@ jobs:
       # dataset tests. None of it needs AWS credentials.
       - run: npm run verify
 
-  publish-frontend:
-    name: Publish frontend
+  plan:
+    name: Plan infrastructure
     needs: verify
-    # Runs only for pushes to main, and only where a publish role is configured, so
+    # Runs only for pushes to main, and only where the deploy roles are configured, so
     # forks and clones without AWS access skip it instead of failing.
     if: >-
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
-      vars.AWS_PUBLISH_ROLE_ARN != ''
+      vars.AWS_PLAN_ROLE_ARN != '' &&
+      vars.AWS_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      changes: ${{ steps.diff.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # A read-only role (KbFrontendStack): it can compare templates but change nothing.
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      # Synthesizing first keeps the bundling logs out of the diff. The diff goes to the
+      # run summary, which is what the reviewer reads before approving the deploy.
+      - name: Diff main against the deployed stacks
+        id: diff
+        shell: bash
+        run: |
+          npx -w infra cdk synth --quiet
+          npx -w infra cdk diff --app cdk.out --method=template --no-color 2>&1 | tee diff.txt
+          if grep -q 'Number of stacks with differences: 0' diff.txt; then
+            echo "changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changes=true" >> "$GITHUB_OUTPUT"
+          fi
+          {
+            echo '### Infrastructure diff'
+            echo
+            echo '```text'
+            cat diff.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy infrastructure
+    needs: plan
+    # Skipped when the plan found nothing to change, so documentation and frontend-only
+    # pushes never wait on an approval.
+    if: needs.plan.outputs.changes == 'true'
+    runs-on: ubuntu-latest
+    # The environment's required reviewer approves each run, and the deploy role trusts
+    # only this environment, so nothing reaches AWS before that approval.
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: deploy-infrastructure
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      # An approval can sit for days. Deploying a commit main has since moved past
+      # would roll the stacks back, so that run fails here instead.
+      - name: Stop if main has moved on since this run was planned
+        run: test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      # The environment approval stands in for the CLI's own confirmation prompt.
+      - run: npx -w infra cdk deploy --all --require-approval never
+
+  publish-frontend:
+    name: Publish frontend
+    needs: [verify, plan, deploy]
+    # Runs only for pushes to main, and only where a publish role is configured, so
+    # forks and clones without AWS access skip it instead of failing. It waits for the
+    # infrastructure deploy so the frontend never goes out ahead of its backend: a
+    # deploy that was skipped lets it through, one that failed or was rejected does not.
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      vars.AWS_PUBLISH_ROLE_ARN != '' &&
+      needs.verify.result == 'success' &&
+      (needs.plan.result == 'success' || needs.plan.result == 'skipped') &&
+      (needs.deploy.result == 'success' || needs.deploy.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
