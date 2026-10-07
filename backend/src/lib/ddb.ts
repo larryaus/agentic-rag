@@ -38,6 +38,8 @@ export type MessageItem = {
   citations: Citation[];
   usage?: { inputTokens: number; outputTokens: number };
   stopReason?: string;
+  // Shared by a question and its answer. Rows written before turn IDs existed lack it.
+  turnId?: string;
   createdAt: string;
   ttl: number;
 };
@@ -158,19 +160,42 @@ export async function loadRecentHistory(opts: {
     }),
   );
   // DynamoDB returns newest-first; Bedrock history must be chronological.
-  return ((output.Items ?? []) as MessageItem[])
-    .reverse()
-    .map((item) => ({
-      role: item.role,
-      content: [
-        {
-          text:
-            item.role === 'assistant'
-              ? item.content.replace(CITATION_RE, '')
-              : item.content,
-        },
-      ],
-    }));
+  return toConverseHistory(((output.Items ?? []) as MessageItem[]).reverse());
+}
+
+/**
+ * Converse rejects history that does not start with a user turn, alternate roles, or
+ * that holds a blank text block. Stored history can break all three: a turn that timed
+ * out leaves a question with no answer, a stream that failed before any text leaves an
+ * empty answer, and the query window can open on an answer. Answers are stored when
+ * they complete, so overlapping requests in one session also interleave rows, and
+ * adjacency cannot say which answer belongs to which question. Questions and answers
+ * are therefore paired by turn ID, and only complete pairs are kept, so the caller can
+ * always append the next question. Rows without a turn ID cannot be paired reliably
+ * and are left out of the model's context.
+ */
+export function toConverseHistory(items: readonly MessageItem[]): Message[] {
+  const answers = new Map<string, string>();
+  for (const item of items) {
+    if (item.role === 'assistant' && item.turnId !== undefined) {
+      answers.set(item.turnId, item.content.replace(CITATION_RE, '').trim());
+    }
+  }
+  const history: Message[] = [];
+  for (const item of items) {
+    if (item.role !== 'user' || item.turnId === undefined) {
+      continue;
+    }
+    const question = item.content.trim();
+    const answer = answers.get(item.turnId);
+    if (question !== '' && answer !== undefined && answer !== '') {
+      history.push(
+        { role: 'user', content: [{ text: question }] },
+        { role: 'assistant', content: [{ text: answer }] },
+      );
+    }
+  }
+  return history;
 }
 
 export function makeMessageItem(opts: {
@@ -181,6 +206,7 @@ export function makeMessageItem(opts: {
   citations?: Citation[];
   usage?: { inputTokens: number; outputTokens: number };
   stopReason?: string;
+  turnId?: string;
   createdAt: string;
   ttl: number;
   id?: string;
@@ -194,6 +220,7 @@ export function makeMessageItem(opts: {
     citations: opts.citations ?? [],
     ...(opts.usage === undefined ? {} : { usage: opts.usage }),
     ...(opts.stopReason === undefined ? {} : { stopReason: opts.stopReason }),
+    ...(opts.turnId === undefined ? {} : { turnId: opts.turnId }),
     createdAt: opts.createdAt,
     ttl: opts.ttl,
   };
