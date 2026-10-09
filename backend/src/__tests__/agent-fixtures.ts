@@ -7,6 +7,8 @@ export const DOC_IDS = [
   '44444444-4444-4444-8444-444444444444',
 ] as const;
 
+export const GUARDRAIL = { id: 'test-guardrail', version: '3' } as const;
+
 export function scripted(
   events: ConverseStreamOutput[],
 ): AsyncIterable<ConverseStreamOutput> {
@@ -94,4 +96,25 @@ export function chunk(
     title: `doc-${index}.md`,
     score: 0.9 - index / 100,
   };
+}
+
+/** What Bedrock streams when the guardrail refuses a turn: its configured message. */
+export function blockedTurn(message: string): AsyncIterable<ConverseStreamOutput> {
+  return scripted([
+    { messageStart: { role: 'assistant' } },
+    {
+      contentBlockDelta: {
+        contentBlockIndex: 0,
+        delta: { text: message },
+      },
+    },
+    { contentBlockStop: { contentBlockIndex: 0 } },
+    { messageStop: { stopReason: 'guardrail_intervened' } },
+    {
+      metadata: {
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        metrics: { latencyMs: 1 },
+      },
+    },
+  ]);
 }

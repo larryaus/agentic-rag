@@ -26,6 +26,8 @@ export type ChatConfig = {
   tableName: string;
   knowledgeBaseId: string;
   chatModelId: string;
+  guardrailId: string;
+  guardrailVersion: string;
   userPoolId: string;
   userPoolClientId: string;
   retrievalTopK: number;
@@ -39,6 +41,8 @@ export function loadChatConfig(): ChatConfig {
     tableName: required('TABLE_NAME'),
     knowledgeBaseId: required('KNOWLEDGE_BASE_ID'),
     chatModelId: required('CHAT_MODEL_ID'),
+    guardrailId: required('GUARDRAIL_ID'),
+    guardrailVersion: required('GUARDRAIL_VERSION'),
     userPoolId: required('USER_POOL_ID'),
     userPoolClientId: required('USER_POOL_CLIENT_ID'),
     retrievalTopK: positiveInteger('RETRIEVAL_TOP_K', 8),

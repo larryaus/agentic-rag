@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { runAgent } from '../lib/agent';
 import { retrieve } from '../lib/retrieve';
-import { chunk, textTurn, toolTurn } from './agent-fixtures';
+import { GUARDRAIL, chunk, textTurn, toolTurn } from './agent-fixtures';
 
 vi.mock('../lib/retrieve', () => ({ retrieve: vi.fn() }));
 
@@ -39,6 +39,7 @@ describe('agent tool loop', () => {
       topK: 8,
       maxIterations: 6,
       modelId: 'test-model',
+      guardrail: GUARDRAIL,
     });
 
     expect(retrieve).toHaveBeenCalledWith({
