@@ -181,7 +181,13 @@ describe('chat handler response ordering', () => {
     );
     expect(mocks.persistSubmittedMessage.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.runAgent.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
-    );    expectOneTurnId();
+    );
+    expect(mocks.runAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        guardrail: { id: 'test-guardrail', version: '3' },
+      }),
+    );
+    expectOneTurnId();
   });
 
   it('keeps a new session readable after a generic agent failure', async () => {

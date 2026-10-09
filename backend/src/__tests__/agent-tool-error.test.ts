@@ -7,7 +7,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 
 import { runAgent } from '../lib/agent';
 import { retrieve } from '../lib/retrieve';
-import { chunk, textTurn, toolTurn } from './agent-fixtures';
+import { GUARDRAIL, chunk, textTurn, toolTurn } from './agent-fixtures';
 
 vi.mock('../lib/retrieve', () => ({ retrieve: vi.fn() }));
 
@@ -37,6 +37,7 @@ it('returns tool errors to the model and lets the loop finish', async () => {
     topK: 8,
     maxIterations: 6,
     modelId: 'test-model',
+    guardrail: GUARDRAIL,
   });
 
   const messages =
@@ -77,6 +78,7 @@ it('lets the model correct malformed tool input and answer with a citation', asy
     topK: 8,
     maxIterations: 6,
     modelId: 'test-model',
+    guardrail: GUARDRAIL,
   });
 
   const messages =
@@ -117,6 +119,7 @@ it('treats a tool call with no streamed input as an empty object', async () => {
     topK: 8,
     maxIterations: 6,
     modelId: 'test-model',
+    guardrail: GUARDRAIL,
   });
 
   const messages =

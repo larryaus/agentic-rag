@@ -399,6 +399,98 @@ describe('CDK stacks', () => {
     );
   });
 
+  it('guards the chat model with content filters and masks sensitive data in answers', () => {
+    const template = primaryTemplates.api;
+    const guardrails = template.findResources('AWS::Bedrock::Guardrail');
+    expect(Object.keys(guardrails)).toHaveLength(1);
+    const [guardrailId, guardrail] = Object.entries(guardrails)[0] ?? [];
+    const properties = guardrail?.Properties as {
+      ContentPolicyConfig: {
+        FiltersConfig: Array<{
+          Type: string;
+          InputStrength: string;
+          OutputStrength: string;
+        }>;
+      };
+      SensitiveInformationPolicyConfig: {
+        PiiEntitiesConfig: Array<{
+          Type: string;
+          Action: string;
+          InputEnabled: boolean;
+          OutputEnabled: boolean;
+          OutputAction: string;
+        }>;
+      };
+    };
+
+    const filters = new Map(
+      properties.ContentPolicyConfig.FiltersConfig.map((filter) => [
+        filter.Type,
+        [filter.InputStrength, filter.OutputStrength],
+      ]),
+    );
+    expect(Object.fromEntries(filters)).toEqual({
+      HATE: ['MEDIUM', 'MEDIUM'],
+      INSULTS: ['MEDIUM', 'MEDIUM'],
+      MISCONDUCT: ['MEDIUM', 'MEDIUM'],
+      SEXUAL: ['MEDIUM', 'MEDIUM'],
+      VIOLENCE: ['MEDIUM', 'MEDIUM'],
+      // Prompt attacks are an input-only check.
+      PROMPT_ATTACK: ['HIGH', 'NONE'],
+    });
+
+    const entities = properties.SensitiveInformationPolicyConfig.PiiEntitiesConfig;
+    const types = entities.map((entity) => entity.Type);
+    expect(types).toEqual(
+      expect.arrayContaining([
+        'CREDIT_DEBIT_CARD_NUMBER',
+        'PASSWORD',
+        'AWS_SECRET_KEY',
+        'US_SOCIAL_SECURITY_NUMBER',
+      ]),
+    );
+    // Documents legitimately hold contact details, such as a support address.
+    for (const contact of ['EMAIL', 'PHONE', 'NAME', 'ADDRESS']) {
+      expect(types).not.toContain(contact);
+    }
+    for (const entity of entities) {
+      expect(entity).toEqual({
+        Type: entity.Type,
+        Action: 'ANONYMIZE',
+        InputEnabled: false,
+        OutputEnabled: true,
+        OutputAction: 'ANONYMIZE',
+      });
+    }
+
+    // The Lambda pins a published version, so a guardrail edit ships as a new version.
+    template.hasResourceProperties('AWS::Bedrock::GuardrailVersion', {
+      GuardrailIdentifier: { 'Fn::GetAtt': [guardrailId, 'GuardrailId'] },
+    });
+    const versionId = Object.keys(
+      template.findResources('AWS::Bedrock::GuardrailVersion'),
+    )[0];
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          GUARDRAIL_ID: { 'Fn::GetAtt': [guardrailId, 'GuardrailId'] },
+          GUARDRAIL_VERSION: { 'Fn::GetAtt': [versionId, 'Version'] },
+        }),
+      },
+    });
+
+    expect(actionsForRole(template, 'ChatFunctionServiceRole')).toContain(
+      'bedrock:ApplyGuardrail',
+    );
+    const applyStatements = statements(template).filter(
+      (statement) => statement.Action === 'bedrock:ApplyGuardrail',
+    );
+    expect(applyStatements).toHaveLength(1);
+    expect(applyStatements[0]?.Resource).toEqual({
+      'Fn::GetAtt': [guardrailId, 'GuardrailArn'],
+    });
+  });
+
   it('has no wildcard resources in authored Lambda policies except X-Ray', () => {
     const template = primaryTemplates.api;
     const rolePrefixes = [
