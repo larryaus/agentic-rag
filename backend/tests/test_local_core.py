@@ -217,3 +217,20 @@ async def test_running_out_of_tool_iterations_drops_the_held_tail():
     )
     assert result["stopReason"] == "max_iterations"
     assert "wJalrXUtnFEMI" not in json.dumps(events) and "wJalrXUtnFEMI" not in result["text"]
+
+
+async def test_running_out_of_tool_iterations_with_only_held_text_uses_the_fallback():
+    from test_agent import tool
+
+    model = Model(*[[TextDelta(0, "Let me search."), tool(index=1), Stop("tool_use")]] * 2)
+    events = []
+    result = await run(
+        model,
+        Retrieval([]),
+        events,
+        guardrail=LocalGuardrail(Classifier(""), check_input=False),
+        max_iterations=2,
+    )
+    assert result["stopReason"] == "max_iterations"
+    # The dropped tail leaves only the truncation mark, which is not an answer.
+    assert result["text"].startswith("I could not complete this question")

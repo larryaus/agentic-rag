@@ -146,7 +146,10 @@ async def run_agent(
     except BaseException:
         release(output_filter.finish(success=False))
         raise
+    answered = text
+    # A dropped tail leaves only a truncation mark, so the fallback looks at the answer
+    # released before it.
     release(output_filter.finish(success=stop_reason in COMPLETE_STOPS))
-    if stop_reason == "max_iterations" and not text:
+    if stop_reason == "max_iterations" and not answered:
         text = "I could not complete this question within the allowed number of search steps. Please try narrowing it."
     return result()
