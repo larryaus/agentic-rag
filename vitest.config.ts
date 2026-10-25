@@ -6,7 +6,7 @@ export default defineConfig({
   },
   test: {
     include: [
-      'backend/src/__tests__/**/*.test.ts',
+      'shared/src/__tests__/**/*.test.ts',
       'frontend/src/__tests__/**/*.{test,spec}.{ts,tsx}',
       'infra/test/**/*.test.ts',
     ],

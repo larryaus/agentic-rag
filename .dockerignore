@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/.venv
+.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+.cache
+infra/cdk.out
+.git
+.claude
+.env
+frontend/.env

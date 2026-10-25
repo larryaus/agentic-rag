@@ -1,0 +1,119 @@
+{
+  "sessionInput": {
+    "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "userSub": "owner",
+    "createdAt": "2026-01-01T00:00:00.123Z",
+    "ttl": 1775001600,
+    "title": "First question"
+  },
+  "session": {
+    "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "sk": "META",
+    "gsi1pk": "USER#owner#SESSION",
+    "gsi1sk": "2026-01-01T00:00:00.123Z",
+    "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "userSub": "owner",
+    "title": "First question",
+    "createdAt": "2026-01-01T00:00:00.123Z",
+    "updatedAt": "2026-01-01T00:00:00.123Z",
+    "messageCount": 0,
+    "ttl": 1775001600
+  },
+  "messages": [
+    {
+      "input": {
+        "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "userSub": "owner",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600,
+        "id": "user",
+        "role": "user",
+        "content": "Question",
+        "turnId": "turn1"
+      },
+      "item": {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#user",
+        "userSub": "owner",
+        "role": "user",
+        "content": "Question",
+        "citations": [],
+        "turnId": "turn1",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      }
+    },
+    {
+      "input": {
+        "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "userSub": "owner",
+        "createdAt": "2026-01-01T00:00:00.124Z",
+        "ttl": 1775001600,
+        "id": "assistant",
+        "role": "assistant",
+        "content": "Answer [ref:1]",
+        "turnId": "turn1",
+        "citations": [
+          {
+            "ref": 1,
+            "title": "Guide.md",
+            "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "score": 0.875,
+            "snippet": "text"
+          }
+        ],
+        "usage": {
+          "inputTokens": 10,
+          "outputTokens": 4
+        },
+        "stopReason": "end_turn"
+      },
+      "item": {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.124Z#assistant",
+        "userSub": "owner",
+        "role": "assistant",
+        "content": "Answer [ref:1]",
+        "citations": [
+          {
+            "ref": 1,
+            "title": "Guide.md",
+            "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "score": 0.875,
+            "snippet": "text"
+          }
+        ],
+        "usage": {
+          "inputTokens": 10,
+          "outputTokens": 4
+        },
+        "stopReason": "end_turn",
+        "turnId": "turn1",
+        "createdAt": "2026-01-01T00:00:00.124Z",
+        "ttl": 1775001600
+      }
+    },
+    {
+      "input": {
+        "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "userSub": "owner",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600,
+        "id": "legacy",
+        "role": "assistant",
+        "content": "Legacy answer",
+        "citations": []
+      },
+      "item": {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#legacy",
+        "userSub": "owner",
+        "role": "assistant",
+        "content": "Legacy answer",
+        "citations": [],
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      }
+    }
+  ]
+}

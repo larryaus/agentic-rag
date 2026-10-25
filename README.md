@@ -1,8 +1,16 @@
 # Enterprise Knowledge Base Assistant
 
-A serverless, citation-grounded Q&A assistant for shared company documents, built on AWS
-and deployed to a real account. Users upload documents, ask questions in natural
-language, and get streamed answers whose claims link back to the source files.
+A citation-grounded Q&A assistant for shared company documents. Users upload
+documents, ask questions in natural language, and get streamed answers whose claims
+link back to the source files.
+
+One Python FastAPI backend runs in two deployments:
+
+- **Local, on any machine:** `docker compose up` with Postgres and pgvector, Keycloak
+  for sign-in, and any OpenAI-compatible model: a hosted API with a key, or Ollama.
+  No AWS account needed. See [Run it locally](#run-it-locally).
+- **AWS, serverless:** Lambda, Bedrock, DynamoDB, S3 and Cognito, deployed with CDK.
+  This is the live demo below.
 
 **Live demo: https://d3efqlxqt2imc9.cloudfront.net**
 
@@ -27,7 +35,107 @@ Ask me for a demo account and I will create one for you.
 - **Runs for about a dollar a month when idle.** Every component is serverless or
   on-demand, including the vector store.
 
-## Architecture
+## Run it locally
+
+Prerequisites: Docker with Compose v2, and an API key for an OpenAI-compatible model
+(or [Ollama](#use-ollama-instead-of-a-hosted-model)).
+
+```bash
+cp .env.example .env        # then set LLM_API_KEY in .env
+docker compose up --build
+```
+
+Open http://localhost:8000 and sign in as `demo` / `demo-password`. Upload the files in
+`samples/` from the Documents panel, wait for them to show `READY`, and ask a question
+such as "How many days of annual leave do employees get?".
+
+Compose starts four services: the app on port 8000 (it also serves the frontend),
+Postgres with pgvector, Keycloak on port 8080 with a seeded `kb` realm, and, with the
+`ollama` profile, a local model server. Ports are bound to `127.0.0.1` only, because
+Keycloak runs in development mode with an `admin` / `admin` console. Documents live in a Docker volume, and
+`docker compose down -v` removes them along with the database.
+
+To try the whole stack without any model key, use the deterministic fake model the
+tests use:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.fake-llm.yml up --build
+```
+
+### Use Ollama instead of a hosted model
+
+```bash
+# In .env: the commented Ollama block from .env.example
+docker compose --profile ollama up -d --build
+docker compose exec ollama ollama pull qwen3:8b
+docker compose exec ollama ollama pull nomic-embed-text
+```
+
+The model must support tool calling. `OLLAMA_CONTEXT_LENGTH` is set to 32768 in
+`docker-compose.yml`, and `LLM_MAX_CONTEXT_CHARS` keeps each request inside it by
+dropping the oldest conversation history first. The question check gives the model 512
+tokens and 20 seconds; a reasoning model that thinks for longer fails that check open,
+so with such a model you may prefer `GUARDRAIL_INPUT_CHECK=off`.
+
+### Switching embedding models
+
+The vector index is tied to the embedding model that built it, and the app refuses to
+start against a different one. To switch, rebuild the index with the app stopped:
+
+```bash
+docker compose stop app
+docker compose run --rm app python -m kb_assistant.adapters.local.reindex
+docker compose up -d app
+```
+
+### Frontend only
+
+A mock server stands in for the sign-in provider, the API and the streaming chat
+endpoint, for UI work with no backend at all:
+
+```bash
+npm run dev:mock
+```
+
+Its settings live in `frontend/.env.mock`, which Vite loads only in mock mode, so they
+cannot reach a deployed build.
+
+## Two deployments, one core
+
+```text
+                    React frontend (generic OpenID Connect sign-in)
+                                  │
+                  FastAPI app: routes, SSE chat, agent tool loop,
+                  citations, history, upload rules, paging, contracts
+                                  │
+           ┌──────────────────────┴───────────────────────┐
+           ▼                                              ▼
+    adapters/local                                  adapters/aws
+    OpenAI-compatible chat + embeddings             Bedrock ConverseStream
+    Postgres: records + hybrid pgvector search      Bedrock Knowledge Base + S3 Vectors
+    files on a volume, signed URLs                  S3, presigned URLs
+    in-process ingestion worker                     EventBridge ingest + reconciler
+    model classifier + pattern masking              Bedrock Guardrails
+    Keycloak                                        Cognito
+```
+
+| | Local | AWS |
+|---|---|---|
+| Runs as | uvicorn in Docker Compose | Lambda (Lambda Web Adapter for HTTP), CDK |
+| Model | any OpenAI-compatible API, or Ollama | Bedrock (Claude) |
+| Search | Postgres + pgvector, vector and keyword fused with RRF | Bedrock Knowledge Base, S3 Vectors |
+| Records | Postgres | DynamoDB single table |
+| Files | Docker volume, HMAC-signed URLs | S3 (KMS), presigned URLs |
+| Sign-in | Keycloak | Cognito |
+| Ingestion | in-process worker with leases | per-document ingestion + reconciler |
+| Safety | model classifier for questions, pattern masking for answers | Bedrock Guardrails |
+
+The routes, agent loop, citations, history rules and API contract are shared, so a fix
+to any of them lands in both deployments. `container.py` is the only place that picks an
+adapter, and it imports adapters lazily: the Lambda package never imports the local
+dependencies, and the Docker image never imports boto3. Tests enforce both.
+
+## AWS architecture
 
 ```text
             Browser ── React 19 + TypeScript single-page app
@@ -38,6 +146,7 @@ Ask me for a demo account and I will create one for you.
                │
                ├── documents,    ► API Gateway HTTP API ──► Lambda
                │   sessions        (Cognito JWT authorizer, access-token scope)
+               │                   also verifies the access token in code
                │
                └── chat ─────────► Lambda Function URL (RESPONSE_STREAM / SSE)
                                    verifies the access token in code
@@ -63,6 +172,10 @@ Ask me for a demo account and I will create one for you.
                                ├─ polls ingestion status until terminal
                                └─ expires abandoned uploads
 ```
+
+The HTTP Lambdas run the Python FastAPI app through the Lambda Web Adapter. Each
+function mounts only its own routes and initializes their AWS clients before serving
+requests. Ingestion and reconciliation use direct Python Lambda handlers.
 
 | Area | AWS services | What it demonstrates |
 |---|---|---|
@@ -95,6 +208,13 @@ Ask me for a demo account and I will create one for you.
   returned, so a chip cannot point at a document the model invented.
 - **Model IDs are configuration.** Chat and embedding models are CDK context values, and
   the IAM grant is derived from them, so switching model or region is a one-line change.
+- **One app, two deployments.** The same FastAPI app serves both, with ports for the
+  model, search, records, files, ingestion, guardrail and sign-in. The local store keeps
+  DynamoDB's item and cursor shapes, so the shared routes cannot tell the two apart.
+- **Local ingestion is safe to run twice.** Each claim on a document takes a lease and a
+  new generation, and every later write checks both the generation and the embedding
+  model, so a reclaimed lease or a worker left on an old model can never overwrite newer
+  work. Chunks are embedded before one transaction replaces them.
 
 ## What the first real deployment surfaced
 
@@ -144,23 +264,57 @@ Each fix is covered by an infrastructure test so it cannot quietly regress.
   rendered as Markdown with raw HTML left inert.
 - Tokens, presigned URLs and document text are never logged.
 
+The local deployment's safety layer is weaker than Bedrock Guardrails, and says so:
+
+- Questions are screened by one extra call to the same model, acting as a classifier.
+  If that call fails or returns something unreadable, the question is allowed (fail
+  open), so treat it as a best-effort filter. `GUARDRAIL_INPUT_CHECK=off` removes it
+  and its extra model call.
+- Answers are masked by patterns for card numbers, IBANs, AWS keys, labelled passwords,
+  and US, UK and Canadian identifiers, with the same placeholders Bedrock uses. Every
+  pattern matches at most 86 characters, so the stream holds back the last 87 and never
+  releases a cut through a match, so the streamed text is what masking the whole answer
+  would give. (A pathologically long chain of overlapping matches is cut by force and
+  can repeat a placeholder; it never releases the raw text.) If the model stream fails,
+  the held-back tail is dropped rather than released.
+- Pattern masking has gaps. Anything the patterns do not know passes through. A labelled
+  password is masked only up to its first 64 characters. A card number in the same run
+  of digits as other numbers (an expiry such as `12/26` or a CVV right after it, or two
+  card numbers in a row) is not recognised, and nor is an IBAN followed directly by more
+  capitals or digits.
+- Signed file URLs are HMAC tokens bound to one key, one operation and one content
+  type, expiring after five minutes. The signing secret is generated on first start and
+  kept with the files.
+
 ## Testing
 
 ```bash
 npm ci
-python3 -m venv .venv && .venv/bin/python -m pip install -e './evals[test]'
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -c backend/requirements-aws.lock -e './backend[aws,local,dev]' -e './evals[test]'
 npm run verify
+npm run verify:artifact  # requires Docker
+
+# Postgres-backed tests for the local deployment (skipped without TEST_DATABASE_URL):
+docker run -d --name kb-test-pg -p 5433:5432 -e POSTGRES_PASSWORD=postgres pgvector/pgvector:0.8.7-pg17
+TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres .venv/bin/pytest -q backend/tests
 ```
 
-`npm run verify` runs strict TypeScript checking, zero-warning ESLint, the Vitest suites
-(backend handlers, the agent loop, React components, and CDK template assertions), a
-production frontend build, an offline `cdk synth`, and the Python dataset tests. No test
-needs AWS credentials.
+`npm run verify` runs TypeScript checking, ESLint, frontend and CDK Vitest tests,
+contract fixtures, the frontend build, CDK synthesis, Ruff, strict mypy, Python backend
+pytest, and the evaluation dataset tests. Bundling downloads pinned Python packages;
+no test calls AWS or a model API. `npm run verify:artifact` boots the ARM64 package in
+the Lambda Python 3.12 image with networking disabled. The adapter layer, streaming
+transport, and IAM still require validation in AWS. The same constraints pin the
+shared runtime packages in development, CI, and the Lambda asset. The artifact gate
+also constructs every AWS adapter, checks fail-closed JWT verification, and exercises
+incremental SSE and assistant persistence with fake adapters outside the shipped asset.
 
 ## Continuous integration and deployment
 
-GitHub Actions (`.github/workflows/ci.yml`) runs `npm run verify` on every pull request
-and every push to `main`. After a push to `main` passes, three more jobs run in order:
+GitHub Actions (`.github/workflows/ci.yml`) runs `npm run verify` and
+`npm run verify:artifact` on every pull request and every push to `main`. After a push
+to `main` passes, three more jobs run in order:
 
 1. **Plan** runs `cdk diff` against the deployed stacks and writes the result to the run
    summary.
@@ -192,30 +346,19 @@ with a local `cdk deploy -c budgetAlertEmail=...`.
 ## Repository layout
 
 ```text
-backend/   TypeScript Lambda handlers, the Bedrock agent loop, auth and storage helpers
+backend/   Python FastAPI app, shared agent core, AWS adapters and Lambda entry points
 frontend/  React 19 + Vite single-page application
 infra/     AWS CDK v2 stacks: frontend hosting, storage, knowledge base, auth, API, budget
-shared/    Type-only API and SSE contracts used by both sides
+shared/    Typed API/SSE contracts and JSON compatibility fixtures
+docker/    The local deployment's image and Keycloak realm
 evals/     Python golden-dataset schema for retrieval evaluation
 samples/   Three sample documents: an employee handbook, a product FAQ, a support runbook
-tools/     Local mock server and the frontend publish script
+tools/     Frontend mock/publish scripts, contract fixture generator and ARM64 artifact checks
 ```
-
-## Run it locally without AWS
-
-A mock server stands in for Cognito, the API, S3 and the streaming chat endpoint, so the
-UI can be exercised end to end with no account:
-
-```bash
-npm run dev:mock
-```
-
-Its settings live in `frontend/.env.mock`, which Vite loads only in mock mode, so they
-cannot reach a deployed build.
 
 ## Deploy to your own account
 
-Prerequisites: Node.js 24, the AWS CLI v2 with credentials, and Amazon Bedrock access to
+Prerequisites: Node.js 24, Python 3.12, the AWS CLI v2 with credentials, and Amazon Bedrock access to
 the chat model in the target region. A profile being listed does not mean the account
 may invoke it, so confirm the model answers in the Bedrock console playground first. The
 default, `au.anthropic.claude-sonnet-4-6`, is the one verified for Sydney
@@ -261,6 +404,22 @@ npm run -w frontend dev
 Remove everything with `npx -w infra cdk destroy --all`. The stacks use `DESTROY`
 removal policies for convenience; a production system should retain its data.
 
+## Rolling the Python backend out to AWS
+
+The Lambdas changed from Node.js to Python in place: same functions, roles, routes,
+table and data. The first deploy of that change goes through the usual approved CI run.
+Before calling it done, check against the live stack:
+
+1. Sign in, then open and continue a conversation created by the previous backend.
+2. Ask a new question and confirm the answer streams with citation chips.
+3. Upload a document and wait for `READY`, then download it from a chip.
+4. Remove a `FAILED` document, if there is one.
+5. Ask something the guardrail should refuse, and confirm the refusal.
+6. Check the CloudWatch logs and alarms for the six functions.
+
+To roll back, revert the merge commit on `main` and approve the redeploy; CloudFormation
+restores the previous functions, and the stored data needs no migration either way.
+
 ## Cost
 
 Approximate, for a small demo in `ap-southeast-2`:
@@ -278,7 +437,8 @@ Not built yet, with the hooks already in place:
 
 - Department and date metadata filtering (the Cognito attribute and document metadata
   already exist)
-- Hybrid retrieval and reranking
+- Hybrid retrieval and reranking on AWS (the local deployment already fuses vector and
+  keyword search)
 - A human-approval step for sensitive actions
 - Token, latency and cost dashboards
 - A regression runner over the golden dataset in `evals/`

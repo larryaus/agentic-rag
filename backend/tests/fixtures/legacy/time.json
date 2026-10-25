@@ -1,0 +1,32 @@
+[
+  {
+    "ms": 0,
+    "iso": "1970-01-01T00:00:00.000Z",
+    "sk": "MSG#1970-01-01T00:00:00.000Z#bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+  },
+  {
+    "ms": 1,
+    "iso": "1970-01-01T00:00:00.001Z",
+    "sk": "MSG#1970-01-01T00:00:00.001Z#bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+  },
+  {
+    "ms": 999,
+    "iso": "1970-01-01T00:00:00.999Z",
+    "sk": "MSG#1970-01-01T00:00:00.999Z#bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+  },
+  {
+    "ms": -1,
+    "iso": "1969-12-31T23:59:59.999Z",
+    "sk": "MSG#1969-12-31T23:59:59.999Z#bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+  },
+  {
+    "ms": 1767225600123,
+    "iso": "2026-01-01T00:00:00.123Z",
+    "sk": "MSG#2026-01-01T00:00:00.123Z#bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+  }
+]

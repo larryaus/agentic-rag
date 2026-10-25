@@ -1,11 +1,12 @@
 /**
- * Local mock of every AWS dependency the frontend talks to: Cognito Hosted UI +
- * token endpoint + JWKS, the HTTP API, an S3 presigned PUT target, and the
- * streaming chat Function URL.
+ * Local mock of everything the frontend talks to: an OpenID Connect provider (in
+ * Cognito's style: authorize, token, JWKS and logout), the HTTP API, a presigned PUT
+ * target, and the streaming chat endpoint.
  *
- * Exists so the UI can be exercised end to end with no AWS account. It is a
+ * Exists so the UI can be exercised with no backend at all; `docker compose up` runs
+ * the real one. It is a
  * development fixture, not a reimplementation of the backend — handler logic
- * under backend/src is the real thing and is covered by the vitest suite.
+ * under backend/src/kb_assistant is the real thing and is covered by pytest.
  *
  * No dependencies beyond the Node standard library.
  *   node tools/mock-server.mjs
@@ -84,7 +85,7 @@ function readBody(req) {
   });
 }
 
-/** The mock trusts any bearer token; the real backend verifies it against Cognito. */
+/** The mock trusts any bearer token; the real backend verifies it against the issuer. */
 function authed(req) {
   return (req.headers.authorization ?? '').startsWith('Bearer ');
 }
@@ -112,12 +113,19 @@ const server = createServer(async (req, res) => {
     return res.end();
   }
 
-  // --- Cognito: JWKS -------------------------------------------------------
+  // --- Sign-in: logout returns straight to the app --------------------------
+  if (path === '/logout') {
+    const target = url.searchParams.get('logout_uri') ?? url.searchParams.get('post_logout_redirect_uri');
+    res.writeHead(302, { location: target ?? '/' });
+    return res.end();
+  }
+
+  // --- Sign-in: JWKS -------------------------------------------------------
   if (path === '/.well-known/jwks.json') {
     return json(res, 200, { keys: [jwkPublic] });
   }
 
-  // --- Cognito: Hosted UI. Auto-approves and bounces straight back. ---------
+  // --- Sign-in: hosted login page. Auto-approves and bounces straight back. ---------
   if (path === '/oauth2/authorize') {
     const redirectUri = url.searchParams.get('redirect_uri');
     const state = url.searchParams.get('state') ?? '';
@@ -132,7 +140,7 @@ const server = createServer(async (req, res) => {
     return res.end();
   }
 
-  // --- Cognito: token exchange --------------------------------------------
+  // --- Sign-in: token exchange --------------------------------------------
   if (path === '/oauth2/token' && req.method === 'POST') {
     const form = new URLSearchParams((await readBody(req)).toString());
     const nonce = codes.get(form.get('code')) ?? '';
@@ -351,8 +359,8 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   const jwks = `${ORIGIN}/.well-known/jwks.json`;
-  console.log(`mock AWS stack listening on ${ORIGIN}`);
-  console.log(`  cognito domain : ${ORIGIN}`);
+  console.log(`mock backend listening on ${ORIGIN}`);
+  console.log(`  oidc issuer    : ${ORIGIN}`);
   console.log(`  jwks uri       : ${jwks}`);
   console.log(`  http api       : ${ORIGIN}`);
   console.log(`  chat url       : ${ORIGIN}/chat`);

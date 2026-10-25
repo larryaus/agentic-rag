@@ -1,0 +1,414 @@
+{
+  "Chat": [
+    {
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    {
+      "Action": "bedrock:Retrieve",
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::Join": [
+          "",
+          [
+            "arn:",
+            {
+              "Ref": "AWS::Partition"
+            },
+            ":bedrock:us-east-1:123456789012:knowledge-base/",
+            {
+              "Fn::ImportValue": "KnowledgeBase1024:ExportsOutputFnGetAttKnowledgeBaseKnowledgeBaseIdFC83E473"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "Action": [
+        "bedrock:InvokeModelWithResponseStream",
+        "bedrock:InvokeModel"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        {
+          "Fn::Join": [
+            "",
+            [
+              "arn:",
+              {
+                "Ref": "AWS::Partition"
+              },
+              ":bedrock:us-east-1:123456789012:inference-profile/us.anthropic.test-model-v1:0"
+            ]
+          ]
+        },
+        {
+          "Fn::Join": [
+            "",
+            [
+              "arn:",
+              {
+                "Ref": "AWS::Partition"
+              },
+              ":bedrock:*::foundation-model/anthropic.test-model-v1:0"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "Action": "bedrock:ApplyGuardrail",
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::GetAtt": [
+          "ChatGuardrail",
+          "GuardrailArn"
+        ]
+      }
+    },
+    {
+      "Action": [
+        "dynamodb:Query",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:GetItem"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        {
+          "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttConversationsTableCD91EB96Arn4A2B28C6"
+        },
+        {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttConversationsTableCD91EB96Arn4A2B28C6"
+              },
+              "/index/gsi1"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttDataKey17AFBB84ArnCE2A1BC6"
+      }
+    }
+  ],
+  "Presign": [
+    {
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    {
+      "Action": "s3:PutObject",
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::Join": [
+          "",
+          [
+            {
+              "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttDocumentsBucket9EC9DEB9ArnEA5095A7"
+            },
+            "/uploads/*"
+          ]
+        ]
+      }
+    },
+    {
+      "Action": "dynamodb:PutItem",
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttConversationsTableCD91EB96Arn4A2B28C6"
+      }
+    },
+    {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttDataKey17AFBB84ArnCE2A1BC6"
+      }
+    }
+  ],
+  "Documents": [
+    {
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    {
+      "Action": [
+        "dynamodb:Query",
+        "dynamodb:GetItem"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        {
+          "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttConversationsTableCD91EB96Arn4A2B28C6"
+        },
+        {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttConversationsTableCD91EB96Arn4A2B28C6"
+              },
+              "/index/gsi1"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "Action": "dynamodb:DeleteItem",
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttConversationsTableCD91EB96Arn4A2B28C6"
+      }
+    },
+    {
+      "Action": [
+        "s3:GetObject",
+        "s3:DeleteObject"
+      ],
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::Join": [
+          "",
+          [
+            {
+              "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttDocumentsBucket9EC9DEB9ArnEA5095A7"
+            },
+            "/uploads/*"
+          ]
+        ]
+      }
+    },
+    {
+      "Action": "kms:Decrypt",
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttDataKey17AFBB84ArnCE2A1BC6"
+      }
+    }
+  ],
+  "Sessions": [
+    {
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    {
+      "Action": [
+        "dynamodb:Query",
+        "dynamodb:GetItem"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        {
+          "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttConversationsTableCD91EB96Arn4A2B28C6"
+        },
+        {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttConversationsTableCD91EB96Arn4A2B28C6"
+              },
+              "/index/gsi1"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "Action": "kms:Decrypt",
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttDataKey17AFBB84ArnCE2A1BC6"
+      }
+    }
+  ],
+  "Ingest": [
+    {
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    {
+      "Action": [
+        "bedrock:IngestKnowledgeBaseDocuments",
+        "bedrock:StartIngestionJob"
+      ],
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::Join": [
+          "",
+          [
+            "arn:",
+            {
+              "Ref": "AWS::Partition"
+            },
+            ":bedrock:us-east-1:123456789012:knowledge-base/",
+            {
+              "Fn::ImportValue": "KnowledgeBase1024:ExportsOutputFnGetAttKnowledgeBaseKnowledgeBaseIdFC83E473"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "Action": [
+        "dynamodb:UpdateItem",
+        "dynamodb:GetItem"
+      ],
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttConversationsTableCD91EB96Arn4A2B28C6"
+      }
+    },
+    {
+      "Action": "s3:DeleteObject",
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::Join": [
+          "",
+          [
+            {
+              "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttDocumentsBucket9EC9DEB9ArnEA5095A7"
+            },
+            "/uploads/*"
+          ]
+        ]
+      }
+    },
+    {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttDataKey17AFBB84ArnCE2A1BC6"
+      }
+    }
+  ],
+  "Reconciler": [
+    {
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    {
+      "Action": [
+        "bedrock:GetKnowledgeBaseDocuments",
+        "bedrock:IngestKnowledgeBaseDocuments",
+        "bedrock:StartIngestionJob"
+      ],
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::Join": [
+          "",
+          [
+            "arn:",
+            {
+              "Ref": "AWS::Partition"
+            },
+            ":bedrock:us-east-1:123456789012:knowledge-base/",
+            {
+              "Fn::ImportValue": "KnowledgeBase1024:ExportsOutputFnGetAttKnowledgeBaseKnowledgeBaseIdFC83E473"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "Action": [
+        "dynamodb:Query",
+        "dynamodb:UpdateItem"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        {
+          "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttConversationsTableCD91EB96Arn4A2B28C6"
+        },
+        {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttConversationsTableCD91EB96Arn4A2B28C6"
+              },
+              "/index/gsi1"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "Action": [
+        "s3:GetObject",
+        "s3:DeleteObject"
+      ],
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::Join": [
+          "",
+          [
+            {
+              "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttDocumentsBucket9EC9DEB9ArnEA5095A7"
+            },
+            "/uploads/*"
+          ]
+        ]
+      }
+    },
+    {
+      "Action": "s3:ListBucket",
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttDocumentsBucket9EC9DEB9ArnEA5095A7"
+      }
+    },
+    {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Effect": "Allow",
+      "Resource": {
+        "Fn::ImportValue": "Storage1024:ExportsOutputFnGetAttDataKey17AFBB84ArnCE2A1BC6"
+      }
+    }
+  ]
+}

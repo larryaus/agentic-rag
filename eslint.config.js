@@ -7,6 +7,8 @@ export default tseslint.config(
     ignores: [
       '**/cdk.out/**',
       '.claude/**',
+      '.venv/**',
+      '.cache/**',
       '**/coverage/**',
       '**/dist/**',
       '**/node_modules/**',

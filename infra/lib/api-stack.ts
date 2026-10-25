@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 import {
   CfnOutput,
   Duration,
@@ -12,7 +10,6 @@ import {
   aws_events_targets as targets,
   aws_iam as iam,
   aws_lambda as lambda,
-  aws_lambda_nodejs as nodejs,
   aws_logs as logs,
 } from 'aws-cdk-lib';
 import type {
@@ -26,6 +23,7 @@ import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations
 import type { Construct } from 'constructs';
 
 import { createChatGuardrail } from './chat-guardrail';
+import { LAMBDA_ADAPTER_LAYER_VERSION, pythonBackendCode } from './python-backend';
 
 export type KbApiStackProps = StackProps & {
   frontendOrigins: string[];
@@ -57,22 +55,21 @@ export class KbApiStack extends Stack {
   ) {
     super(scope, id, props);
 
-    const createFunction = (options: FunctionOptions): nodejs.NodejsFunction => {
+    const code = pythonBackendCode();
+    const adapter = lambda.LayerVersion.fromLayerVersionArn(this, 'LambdaWebAdapter',
+      `arn:aws:lambda:${this.region}:753240598075:layer:LambdaAdapterLayerArm64:${LAMBDA_ADAPTER_LAYER_VERSION}`);
+    const issuer = `https://cognito-idp.${this.region}.amazonaws.com/${props.userPool.userPoolId}`;
+    const createFunction = (options: FunctionOptions): lambda.Function => {
+      const http = options.handler === 'run.sh';
       const logGroup = new logs.LogGroup(this, `${options.id}LogGroup`, {
         retention: logs.RetentionDays.ONE_WEEK,
         removalPolicy: RemovalPolicy.DESTROY,
       });
-      return new nodejs.NodejsFunction(this, options.id, {
-        entry: path.join(
-          __dirname,
-          '..',
-          '..',
-          'backend',
-          'src',
-          'handlers',
-          options.handler,
-        ),
-        runtime: lambda.Runtime.NODEJS_22_X,
+      return new lambda.Function(this, options.id, {
+        code,
+        handler: options.handler,
+        runtime: lambda.Runtime.PYTHON_3_12,
+        ...(http ? { layers: [adapter] } : {}),
         architecture: lambda.Architecture.ARM_64,
         tracing: lambda.Tracing.ACTIVE,
         logGroup,
@@ -80,7 +77,17 @@ export class KbApiStack extends Stack {
         timeout: options.timeout,
         environment: {
           ...options.environment,
-          NODE_OPTIONS: '--enable-source-maps',
+          DEPLOY_TARGET: 'aws',
+          ...(http ? {
+            AWS_LAMBDA_EXEC_WRAPPER: '/opt/bootstrap',
+            AWS_LWA_PORT: '8080',
+            AWS_LWA_READINESS_CHECK_PATH: '/healthz',
+            OIDC_ISSUER: issuer,
+            OIDC_JWKS_URL: `${issuer}/.well-known/jwks.json`,
+            OIDC_CLIENT_ID: props.userPoolClient.userPoolClientId,
+            OIDC_REQUIRED_SCOPE: 'kb-api/access',
+          } : {}),
+          ...(options.id === 'ChatFunction' ? { AWS_LWA_INVOKE_MODE: 'response_stream' } : {}),
         },
         ...(options.reservedConcurrentExecutions === undefined
           ? {}
@@ -91,22 +98,18 @@ export class KbApiStack extends Stack {
         ...(options.retryAttempts === undefined
           ? {}
           : { retryAttempts: options.retryAttempts }),
-        bundling: {
-          minify: true,
-          sourceMap: true,
-          format: nodejs.OutputFormat.ESM,
-        },
       });
     };
 
     const guardrail = createChatGuardrail(this);
     const chat = createFunction({
       id: 'ChatFunction',
-      handler: 'chat.ts',
+      handler: 'run.sh',
       memorySize: 1024,
       timeout: Duration.minutes(5),
       reservedConcurrentExecutions: 5,
       environment: {
+        KB_ROUTES: 'chat',
         TABLE_NAME: props.conversationsTable.tableName,
         KNOWLEDGE_BASE_ID: props.knowledgeBaseId,
         CHAT_MODEL_ID: props.chatModelId,
@@ -122,7 +125,7 @@ export class KbApiStack extends Stack {
     });
     const ingest = createFunction({
       id: 'IngestFunction',
-      handler: 'ingest.ts',
+      handler: 'kb_assistant.adapters.aws.lambda_events.ingest_handler',
       memorySize: 512,
       timeout: Duration.minutes(1),
       environment: {
@@ -135,7 +138,7 @@ export class KbApiStack extends Stack {
     });
     const reconciler = createFunction({
       id: 'ReconcilerFunction',
-      handler: 'reconciler.ts',
+      handler: 'kb_assistant.adapters.aws.lambda_events.reconciler_handler',
       memorySize: 512,
       timeout: Duration.minutes(2),
       reservedConcurrentExecutions: 1,
@@ -152,10 +155,11 @@ export class KbApiStack extends Stack {
     });
     const presign = createFunction({
       id: 'PresignFunction',
-      handler: 'presign.ts',
+      handler: 'run.sh',
       memorySize: 256,
       timeout: Duration.seconds(15),
       environment: {
+        KB_ROUTES: 'uploads',
         TABLE_NAME: props.conversationsTable.tableName,
         DOCS_BUCKET: props.documentsBucket.bucketName,
         MAX_UPLOAD_BYTES: '26214400',
@@ -163,20 +167,22 @@ export class KbApiStack extends Stack {
     });
     const documents = createFunction({
       id: 'DocumentsFunction',
-      handler: 'documents.ts',
+      handler: 'run.sh',
       memorySize: 256,
       timeout: Duration.seconds(15),
       environment: {
+        KB_ROUTES: 'documents',
         TABLE_NAME: props.conversationsTable.tableName,
         DOCS_BUCKET: props.documentsBucket.bucketName,
       },
     });
     const sessions = createFunction({
       id: 'SessionsFunction',
-      handler: 'sessions.ts',
+      handler: 'run.sh',
       memorySize: 256,
       timeout: Duration.seconds(15),
       environment: {
+        KB_ROUTES: 'sessions',
         TABLE_NAME: props.conversationsTable.tableName,
       },
     });

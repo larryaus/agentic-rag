@@ -21,7 +21,7 @@ export function LoginScreen(props: {
           className="primary-button"
           onClick={() => void beginLogin(props.config)}
         >
-          Sign in with Cognito
+          Sign in
         </button>
       </section>
     </main>

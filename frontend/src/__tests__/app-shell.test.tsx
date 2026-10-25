@@ -46,12 +46,16 @@ vi.mock('../components/SessionList', () => ({
 }));
 
 const config: AppConfig = {
-  userPoolId: 'pool',
-  userPoolClientId: 'client',
-  cognitoDomain: 'https://auth.test',
+  oidcIssuer: 'https://auth.test',
+  oidcClientId: 'client',
+  oidcAuthorizeUrl: 'https://auth.test/authorize',
+  oidcTokenUrl: 'https://auth.test/token',
+  oidcJwksUrl: 'https://auth.test/jwks',
+  oidcScope: 'openid kb-api/access',
+  oidcLogoutUrl: 'https://auth.test/logout',
+  oidcLogoutMode: 'cognito',
   apiUrl: 'https://api.test',
   chatUrl: 'https://chat.test',
-  awsRegion: 'us-east-1',
 };
 
 function response(text: string): Response {

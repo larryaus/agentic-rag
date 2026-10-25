@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=78"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kb-assistant"
+version = "1.0.0"
+requires-python = ">=3.12"
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "pydantic>=2.9,<3", "pydantic-settings>=2.5,<3", "PyJWT[crypto]==2.15.1", "regex>=2024.11"]
+
+[project.optional-dependencies]
+aws = ["boto3==1.40.57"]
+local = ["asyncpg>=0.30,<1", "pgvector>=0.4,<1", "openai>=1.60,<3", "pypdf>=5,<7", "beautifulsoup4>=4.13,<5"]
+dev = ["httpx>=0.28,<1", "pytest>=8,<9", "pytest-asyncio>=0.26,<1", "moto[dynamodb,s3]>=5,<6", "ruff>=0.11", "mypy>=1.15", "boto3-stubs[dynamodb,s3,bedrock-agent,bedrock-agent-runtime,bedrock-runtime]==1.40.57", "types-regex", "asyncpg-stubs==0.32.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["src"]
+markers = ["postgres: needs a pgvector server named by TEST_DATABASE_URL"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]

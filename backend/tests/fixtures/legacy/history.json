@@ -1,0 +1,356 @@
+[
+  {
+    "name": "interleaved",
+    "input": [
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#user-1",
+        "userSub": "owner",
+        "role": "user",
+        "content": "Q1",
+        "citations": [],
+        "turnId": "1",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#user-2",
+        "userSub": "owner",
+        "role": "user",
+        "content": "Q2",
+        "citations": [],
+        "turnId": "2",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#assistant-1",
+        "userSub": "owner",
+        "role": "assistant",
+        "content": "A1 [ref:1]",
+        "citations": [],
+        "turnId": "1",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#assistant-2",
+        "userSub": "owner",
+        "role": "assistant",
+        "content": "A2 [ref:2]",
+        "citations": [],
+        "turnId": "2",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      }
+    ],
+    "output": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "text": "Q1"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "text": "A1"
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "text": "Q2"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "text": "A2"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "unpaired_blank_refs",
+    "input": [
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#assistant-outside",
+        "userSub": "owner",
+        "role": "assistant",
+        "content": "orphan",
+        "citations": [],
+        "turnId": "outside",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#user-no",
+        "userSub": "owner",
+        "role": "user",
+        "content": "no answer",
+        "citations": [],
+        "turnId": "no",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#user-yes",
+        "userSub": "owner",
+        "role": "user",
+        "content": " ok ",
+        "citations": [],
+        "turnId": "yes",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#assistant-yes",
+        "userSub": "owner",
+        "role": "assistant",
+        "content": " answer [ref:1] ",
+        "citations": [],
+        "turnId": "yes",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#user-blank",
+        "userSub": "owner",
+        "role": "user",
+        "content": "blank answer",
+        "citations": [],
+        "turnId": "blank",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#assistant-blank",
+        "userSub": "owner",
+        "role": "assistant",
+        "content": "  ",
+        "citations": [],
+        "turnId": "blank",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#user-marker",
+        "userSub": "owner",
+        "role": "user",
+        "content": "marker",
+        "citations": [],
+        "turnId": "marker",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#assistant-marker",
+        "userSub": "owner",
+        "role": "assistant",
+        "content": "[ref:3]",
+        "citations": [],
+        "turnId": "marker",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#user-empty",
+        "userSub": "owner",
+        "role": "user",
+        "content": "  ",
+        "citations": [],
+        "turnId": "empty",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#assistant-empty",
+        "userSub": "owner",
+        "role": "assistant",
+        "content": "A",
+        "citations": [],
+        "turnId": "empty",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      }
+    ],
+    "output": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "text": "ok"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "text": "answer"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "legacy_missing_turn_id",
+    "input": [
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#user-legacy",
+        "userSub": "owner",
+        "role": "user",
+        "content": "old",
+        "citations": [],
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#assistant-legacy",
+        "userSub": "owner",
+        "role": "assistant",
+        "content": "old answer",
+        "citations": [],
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#user-new",
+        "userSub": "owner",
+        "role": "user",
+        "content": "new",
+        "citations": [],
+        "turnId": "new",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#assistant-new",
+        "userSub": "owner",
+        "role": "assistant",
+        "content": "new answer",
+        "citations": [],
+        "turnId": "new",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      }
+    ],
+    "output": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "text": "new"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "text": "new answer"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "guardrail",
+    "input": [
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#user-b",
+        "userSub": "owner",
+        "role": "user",
+        "content": "blocked",
+        "citations": [],
+        "turnId": "b",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#assistant-b",
+        "userSub": "owner",
+        "role": "assistant",
+        "content": "refusal",
+        "citations": [],
+        "stopReason": "guardrail_intervened",
+        "turnId": "b",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#user-a",
+        "userSub": "owner",
+        "role": "user",
+        "content": "allowed",
+        "citations": [],
+        "turnId": "a",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      },
+      {
+        "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "sk": "MSG#2026-01-01T00:00:00.123Z#assistant-a",
+        "userSub": "owner",
+        "role": "assistant",
+        "content": "answer",
+        "citations": [],
+        "turnId": "a",
+        "createdAt": "2026-01-01T00:00:00.123Z",
+        "ttl": 1775001600
+      }
+    ],
+    "output": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "text": "allowed"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "text": "answer"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "empty",
+    "input": [],
+    "output": []
+  }
+]
