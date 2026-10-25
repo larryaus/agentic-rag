@@ -256,7 +256,8 @@ class RecordingStream:
         self.closed = True
 
 
-async def test_stream_is_closed_when_the_consumer_stops_early():
+@pytest.mark.parametrize("stop_at", ["messageStart", "contentBlockDelta"])
+async def test_stream_is_closed_when_the_consumer_stops_early(stop_at):
     from types import SimpleNamespace
 
     from openai.types.chat import ChatCompletionChunk
@@ -269,9 +270,8 @@ async def test_stream_is_closed_when_the_consumer_stops_early():
 
     client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
     events = OpenAIChat("m", client=client).stream(QUESTION, [SEARCH_TOOL], "s")
-    while "contentBlockDelta" not in (event := await anext(events)):
+    while stop_at not in await anext(events):
         pass
-    assert event["contentBlockDelta"]["delta"] == {"text": "part 0 "}
     await events.aclose()
     assert stream.closed
 

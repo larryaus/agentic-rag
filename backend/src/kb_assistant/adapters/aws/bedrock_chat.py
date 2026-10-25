@@ -1,5 +1,5 @@
 import threading
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable, Iterator
 from typing import Any
 
 from strands.models.bedrock import BedrockModel
@@ -8,6 +8,27 @@ from strands.types.streaming import StreamEvent
 from kb_assistant.errors import ModelStreamError, error_message
 
 MAX_TOKENS = 2048
+
+
+class ClosingEventStream:
+    """A Bedrock event stream that is closed however reading it ends.
+
+    Strands closes the stream only when a turn stops early, so one that raised an in-band
+    exception would hold its connection until garbage collection. The worker thread is the
+    only reader, so closing happens on that thread, after its last read.
+    """
+
+    def __init__(self, stream: Any) -> None:
+        self.stream = stream
+
+    def __iter__(self) -> Iterator[Any]:
+        try:
+            yield from self.stream
+        finally:
+            self.stream.close()
+
+    def close(self) -> None:
+        self.stream.close()
 
 
 class BedrockChat(BedrockModel):
@@ -35,6 +56,12 @@ class BedrockChat(BedrockModel):
         )
         if client is not None:
             self.client = client
+
+    def _converse(self, converse_method: Callable[..., Any], request: dict[str, Any]) -> Any:
+        response = super()._converse(converse_method, request)
+        if "stream" in response:
+            response["stream"] = ClosingEventStream(response["stream"])
+        return response
 
     async def stream(self, *args: Any, **kwargs: Any) -> AsyncGenerator[StreamEvent, None]:
         # A worker thread reads the Bedrock stream. This signal makes it close the stream at

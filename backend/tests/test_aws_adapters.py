@@ -288,6 +288,8 @@ async def test_failure_after_the_stream_starts_keeps_the_partial_answer(failure)
     assert raised.value.partial_result["text"] == "partial"
     assert raised.value.partial_result["stopReason"] == "error"
     assert isinstance(raised.value.__cause__, ModelStreamError)
+    # The broken stream still holds its connection, so it is closed rather than left to GC.
+    assert client.streams[0].closed.is_set()
 
 
 @pytest.mark.parametrize("code", ["AccessDeniedException", "ThrottlingException"])

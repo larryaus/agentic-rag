@@ -101,13 +101,13 @@ class OpenAIChat(OpenAIModel):
         )
         request["messages"] = plain_text_content(request["messages"])
         stream = await self._create(**request)
-        yield {"messageStart": {"role": "assistant"}}
         calls: dict[int, dict[str, str]] = {}
         active = 0
         text_open = False
         finish: str | None = None
         usage = (0, 0)
         try:
+            yield {"messageStart": {"role": "assistant"}}
             async for chunk in stream:
                 if chunk.usage is not None:
                     usage = (chunk.usage.prompt_tokens or 0, chunk.usage.completion_tokens or 0)
