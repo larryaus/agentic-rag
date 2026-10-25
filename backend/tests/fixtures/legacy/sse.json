@@ -1,0 +1,78 @@
+[
+  {
+    "event": {
+      "type": "session",
+      "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    },
+    "frame": "event: session\ndata: {\"sessionId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\"}\n\n"
+  },
+  {
+    "event": {
+      "type": "tool_use",
+      "name": "search_knowledge_base",
+      "input": {}
+    },
+    "frame": "event: tool_use\ndata: {\"name\":\"search_knowledge_base\",\"input\":{}}\n\n"
+  },
+  {
+    "event": {
+      "type": "tool_use",
+      "name": "search_knowledge_base",
+      "input": {
+        "query": "日本語 café",
+        "score": 1,
+        "tiny": 1e-7,
+        "large": 1e+21
+      }
+    },
+    "frame": "event: tool_use\ndata: {\"name\":\"search_knowledge_base\",\"input\":{\"query\":\"日本語 café\",\"score\":1,\"tiny\":1e-7,\"large\":1e+21}}\n\n"
+  },
+  {
+    "event": {
+      "type": "citation",
+      "ref": 1,
+      "title": "日本語.md",
+      "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "score": 0.875,
+      "snippet": "café"
+    },
+    "frame": "event: citation\ndata: {\"ref\":1,\"title\":\"日本語.md\",\"documentId\":\"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\",\"score\":0.875,\"snippet\":\"café\"}\n\n"
+  },
+  {
+    "event": {
+      "type": "citation",
+      "ref": 2,
+      "title": "one",
+      "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "score": 1,
+      "snippet": ""
+    },
+    "frame": "event: citation\ndata: {\"ref\":2,\"title\":\"one\",\"documentId\":\"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\",\"score\":1,\"snippet\":\"\"}\n\n"
+  },
+  {
+    "event": {
+      "type": "text",
+      "delta": "Hello\n世界 😀 \"\\"
+    },
+    "frame": "event: text\ndata: {\"delta\":\"Hello\\n世界 😀 \\\"\\\\\"}\n\n"
+  },
+  {
+    "event": {
+      "type": "done",
+      "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "stopReason": "end_turn",
+      "usage": {
+        "inputTokens": 100,
+        "outputTokens": 20
+      }
+    },
+    "frame": "event: done\ndata: {\"sessionId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"stopReason\":\"end_turn\",\"usage\":{\"inputTokens\":100,\"outputTokens\":20}}\n\n"
+  },
+  {
+    "event": {
+      "type": "error",
+      "message": "Please try again."
+    },
+    "frame": "event: error\ndata: {\"message\":\"Please try again.\"}\n\n"
+  }
+]

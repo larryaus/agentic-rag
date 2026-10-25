@@ -1,0 +1,27 @@
+[
+  {
+    "key": {
+      "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "sk": "META",
+      "gsi1pk": "USER#owner#SESSION",
+      "gsi1sk": "2026-01-01T00:00:00.123Z"
+    },
+    "token": "eyJwayI6IlNFU1NJT04jYWFhYWFhYWEtYWFhYS00YWFhLThhYWEtYWFhYWFhYWFhYWFhIiwic2siOiJNRVRBIiwiZ3NpMXBrIjoiVVNFUiNvd25lciNTRVNTSU9OIiwiZ3NpMXNrIjoiMjAyNi0wMS0wMVQwMDowMDowMC4xMjNaIn0"
+  },
+  {
+    "key": {
+      "pk": "SESSION#aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "sk": "MSG#2026-01-01T00:00:00.123Z#bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    },
+    "token": "eyJwayI6IlNFU1NJT04jYWFhYWFhYWEtYWFhYS00YWFhLThhYWEtYWFhYWFhYWFhYWFhIiwic2siOiJNU0cjMjAyNi0wMS0wMVQwMDowMDowMC4xMjNaI2JiYmJiYmJiLWJiYmItNGJiYi04YmJiLWJiYmJiYmJiYmJiYiJ9"
+  },
+  {
+    "key": {
+      "pk": "DOC#bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "sk": "META",
+      "gsi1pk": "ORG#DOCUMENT",
+      "gsi1sk": "2026-01-01T00:00:00.123Z"
+    },
+    "token": "eyJwayI6IkRPQyNiYmJiYmJiYi1iYmJiLTRiYmItOGJiYi1iYmJiYmJiYmJiYmIiLCJzayI6Ik1FVEEiLCJnc2kxcGsiOiJPUkcjRE9DVU1FTlQiLCJnc2kxc2siOiIyMDI2LTAxLTAxVDAwOjAwOjAwLjEyM1oifQ"
+  }
+]

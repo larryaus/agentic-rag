@@ -1,0 +1,195 @@
+[
+  {
+    "input": null,
+    "status": 400,
+    "error": {
+      "message": "Invalid request"
+    }
+  },
+  {
+    "input": [],
+    "status": 400,
+    "error": {
+      "message": "Invalid request"
+    }
+  },
+  {
+    "input": {},
+    "status": 400,
+    "error": {
+      "message": "filename, contentType, and sizeBytes are required"
+    }
+  },
+  {
+    "input": {
+      "filename": "x",
+      "contentType": "text/plain",
+      "sizeBytes": "1"
+    },
+    "status": 400,
+    "error": {
+      "message": "filename, contentType, and sizeBytes are required"
+    }
+  },
+  {
+    "input": {
+      "filename": "x.txt",
+      "contentType": "text/plain",
+      "sizeBytes": -1
+    },
+    "status": 400,
+    "error": {
+      "message": "Invalid file size"
+    }
+  },
+  {
+    "input": {
+      "filename": "x.txt",
+      "contentType": "text/plain",
+      "sizeBytes": 0
+    },
+    "status": 400,
+    "error": {
+      "message": "Invalid file size"
+    }
+  },
+  {
+    "input": {
+      "filename": "x.txt",
+      "contentType": "text/plain",
+      "sizeBytes": 1.5
+    },
+    "status": 400,
+    "error": {
+      "message": "Invalid file size"
+    }
+  },
+  {
+    "input": {
+      "filename": "x.txt",
+      "contentType": "text/plain",
+      "sizeBytes": 26214401
+    },
+    "status": 400,
+    "error": {
+      "message": "Invalid file size"
+    }
+  },
+  {
+    "input": {
+      "filename": "",
+      "contentType": "text/plain",
+      "sizeBytes": 1
+    },
+    "status": 400,
+    "error": {
+      "message": "Invalid filename"
+    }
+  },
+  {
+    "input": {
+      "filename": ".",
+      "contentType": "text/plain",
+      "sizeBytes": 1
+    },
+    "status": 400,
+    "error": {
+      "message": "Invalid filename"
+    }
+  },
+  {
+    "input": {
+      "filename": "..",
+      "contentType": "text/plain",
+      "sizeBytes": 1
+    },
+    "status": 400,
+    "error": {
+      "message": "Invalid filename"
+    }
+  },
+  {
+    "input": {
+      "filename": "恶意📦",
+      "contentType": "text/plain",
+      "sizeBytes": 1
+    },
+    "status": 400,
+    "error": {
+      "message": "Invalid filename"
+    }
+  },
+  {
+    "input": {
+      "filename": "foo.metadata.json",
+      "contentType": "text/plain",
+      "sizeBytes": 1
+    },
+    "status": 400,
+    "error": {
+      "message": "Invalid filename"
+    }
+  },
+  {
+    "input": {
+      "filename": "x.exe",
+      "contentType": "text/plain",
+      "sizeBytes": 1
+    },
+    "status": 400,
+    "error": {
+      "message": "File extension does not match content type"
+    }
+  },
+  {
+    "input": {
+      "filename": "x.txt",
+      "contentType": "no",
+      "sizeBytes": 1
+    },
+    "status": 400,
+    "error": {
+      "message": "File extension does not match content type"
+    }
+  },
+  {
+    "input": {
+      "filename": "notes.md",
+      "contentType": "text/markdown",
+      "sizeBytes": 123
+    },
+    "status": 201
+  },
+  {
+    "input": {
+      "filename": "doc.PDF",
+      "contentType": "application/pdf",
+      "sizeBytes": 123
+    },
+    "status": 201
+  },
+  {
+    "input": {
+      "filename": "a.htm",
+      "contentType": "text/html",
+      "sizeBytes": 123
+    },
+    "status": 201
+  },
+  {
+    "input": {
+      "filename": "a.html",
+      "contentType": "text/html",
+      "sizeBytes": 123
+    },
+    "status": 201
+  },
+  {
+    "input": {
+      "filename": "a.txt",
+      "contentType": "text/plain",
+      "sizeBytes": 123
+    },
+    "status": 201
+  }
+]

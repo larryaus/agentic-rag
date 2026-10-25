@@ -1,3 +1,7 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { LAMBDA_ADAPTER_LAYER_VERSION } from '../lib/python-backend';
+
 import { App, assertions, type Environment } from 'aws-cdk-lib';
 import { describe, expect, it } from 'vitest';
 
@@ -18,7 +22,7 @@ function stacks(dimension = 1024): {
   auth: KbAuthStack;
   api: KbApiStack;
 } {
-  const app = new App();
+  const app = new App({ context: { 'aws:cdk:bundling-stacks': [] } });
   const storage = new KbStorageStack(app, `Storage${dimension}`, {
     env,
     frontendOrigins: ['http://localhost:5173'],
@@ -276,7 +280,7 @@ describe('CDK stacks', () => {
   });
 
   it('threads a 512 dimension into both index and embedding configuration', () => {
-    const app = new App();
+    const app = new App({ context: { 'aws:cdk:bundling-stacks': [] } });
     const storage = new KbStorageStack(app, 'Storage512Only', {
       env,
       frontendOrigins: ['http://localhost:5173'],
@@ -544,7 +548,7 @@ describe('CDK stacks', () => {
 
   it('serves the frontend from a private bucket behind CloudFront', () => {
     const template = Template.fromStack(
-      new KbFrontendStack(new App(), 'Frontend', { env }),
+      new KbFrontendStack(new App({ context: { 'aws:cdk:bundling-stacks': [] } }), 'Frontend', { env }),
     );
     template.hasResourceProperties('AWS::S3::Bucket', {
       PublicAccessBlockConfiguration: {
@@ -574,7 +578,7 @@ describe('CDK stacks', () => {
   });
 
   it('allows every frontend origin for sign-in and CORS', () => {
-    const app = new App();
+    const app = new App({ context: { 'aws:cdk:bundling-stacks': [] } });
     const frontendOrigins = [
       'http://localhost:5173',
       'https://d111111abcdef8.cloudfront.net',
@@ -624,7 +628,7 @@ describe('CDK stacks', () => {
   });
 
   it('grants the chat role both the regional profile and its foundation model', () => {
-    const app = new App();
+    const app = new App({ context: { 'aws:cdk:bundling-stacks': [] } });
     const storage = new KbStorageStack(app, 'StorageModel', {
       env,
       frontendOrigins: ['http://localhost:5173'],
@@ -658,7 +662,7 @@ describe('CDK stacks', () => {
 
   it('emails the owner as account spend approaches and passes the monthly budget', () => {
     const template = Template.fromStack(
-      new KbBudgetStack(new App(), 'Budget', {
+      new KbBudgetStack(new App({ context: { 'aws:cdk:bundling-stacks': [] } }), 'Budget', {
         env,
         alertEmail: 'owner@example.com',
         monthlyLimitUsd: 10,
@@ -692,7 +696,7 @@ describe('CDK stacks', () => {
 
   it('lets only main-branch GitHub Actions runs of the repository publish the frontend', () => {
     const template = Template.fromStack(
-      new KbFrontendStack(new App(), 'FrontendCi', {
+      new KbFrontendStack(new App({ context: { 'aws:cdk:bundling-stacks': [] } }), 'FrontendCi', {
         env,
         githubRepository: 'octo/kb',
         outputStacks: ['KbAuthStack', 'KbApiStack', 'KbFrontendStack'],
@@ -733,7 +737,7 @@ describe('CDK stacks', () => {
 
   it('lets main-branch runs read the deployed stacks to plan a deploy, and nothing more', () => {
     const template = Template.fromStack(
-      new KbFrontendStack(new App(), 'FrontendPlan', {
+      new KbFrontendStack(new App({ context: { 'aws:cdk:bundling-stacks': [] } }), 'FrontendPlan', {
         env,
         githubRepository: 'octo/kb',
         outputStacks: ['KbFrontendStack'],
@@ -750,7 +754,7 @@ describe('CDK stacks', () => {
 
   it('lets only runs approved into the production environment deploy the stacks', () => {
     const template = Template.fromStack(
-      new KbFrontendStack(new App(), 'FrontendDeploy', {
+      new KbFrontendStack(new App({ context: { 'aws:cdk:bundling-stacks': [] } }), 'FrontendDeploy', {
         env,
         githubRepository: 'octo/kb',
         outputStacks: ['KbFrontendStack'],
@@ -771,7 +775,7 @@ describe('CDK stacks', () => {
 
   it('creates no CI access unless a repository is configured', () => {
     const template = Template.fromStack(
-      new KbFrontendStack(new App(), 'FrontendNoCi', { env }),
+      new KbFrontendStack(new App({ context: { 'aws:cdk:bundling-stacks': [] } }), 'FrontendNoCi', { env }),
     );
     template.resourceCountIs('AWS::IAM::OIDCProvider', 0);
     expect(
@@ -779,5 +783,88 @@ describe('CDK stacks', () => {
         /^(Publish|Plan|Deploy)Role/.test(id),
       ),
     ).toHaveLength(0);
+  });
+});
+
+
+it('preserves every authored IAM statement from base 307ef1a', () => {
+  const template = primaryTemplates.api;
+  const roles = template.findResources('AWS::IAM::Role');
+  const policies = template.findResources('AWS::IAM::Policy');
+  const snapshot: Record<string, unknown> = {};
+  for (const name of ['Chat', 'Presign', 'Documents', 'Sessions', 'Ingest', 'Reconciler']) {
+    const id = Object.keys(roles).find((id) => id.startsWith(`${name}FunctionServiceRole`));
+    expect(id).toBeDefined();
+    snapshot[name] = Object.values(policies).flatMap((resource) => {
+      const props = resource.Properties as { Roles?: { Ref?: string }[]; PolicyDocument: { Statement: unknown[] } };
+      return props.Roles?.some((role) => role.Ref === id) ? props.PolicyDocument.Statement : [];
+    });
+  }
+  expect(snapshot).toEqual(JSON.parse(readFileSync(path.join(__dirname, 'fixtures', 'iam-base-307ef1a.json'), 'utf8')));
+});
+
+it('uses one Python ARM64 asset and the adapter only for HTTP functions', () => {
+  const functions = primaryTemplates.api.findResources('AWS::Lambda::Function');
+  const code = new Set<string>();
+  for (const name of ['Chat', 'Presign', 'Documents', 'Sessions', 'Ingest', 'Reconciler']) {
+    const resource = Object.entries(functions).find(([id]) => id.startsWith(`${name}Function`))?.[1];
+    expect(resource).toBeDefined();
+    const props = resource!.Properties as { Runtime: string; Handler: string; Architectures: string[]; Code: unknown; Layers?: unknown[]; Environment: { Variables: Record<string, unknown> } };
+    code.add(JSON.stringify(props.Code));
+    expect(props.Runtime).toBe('python3.12');
+    expect(props.Architectures).toEqual(['arm64']);
+    const variables = props.Environment.Variables;
+    expect(variables.DEPLOY_TARGET).toBe('aws');
+    expect(variables).not.toHaveProperty('CORS_ALLOW_ORIGINS');
+    expect(variables).not.toHaveProperty('NODE_OPTIONS');
+    if (['Ingest', 'Reconciler'].includes(name)) {
+      expect(props.Handler).toBe(`kb_assistant.adapters.aws.lambda_events.${name.toLowerCase()}_handler`);
+      expect(props.Layers).toBeUndefined();
+      expect(variables).not.toHaveProperty('AWS_LAMBDA_EXEC_WRAPPER');
+    } else {
+      expect(props.Handler).toBe('run.sh');
+      expect(props.Layers).toEqual([`arn:aws:lambda:us-east-1:753240598075:layer:LambdaAdapterLayerArm64:${LAMBDA_ADAPTER_LAYER_VERSION}`]);
+      const routes: Record<string, string> = { Chat: 'chat', Presign: 'uploads', Documents: 'documents', Sessions: 'sessions' };
+      expect(variables).toMatchObject({ AWS_LAMBDA_EXEC_WRAPPER: '/opt/bootstrap', AWS_LWA_PORT: '8080', AWS_LWA_READINESS_CHECK_PATH: '/healthz', OIDC_REQUIRED_SCOPE: 'kb-api/access', KB_ROUTES: routes[name] });
+      expect(variables.OIDC_ISSUER).toBeDefined();
+      expect(variables.OIDC_JWKS_URL).toBeDefined();
+      expect(variables.OIDC_CLIENT_ID).toBeDefined();
+      expect(variables.AWS_LWA_INVOKE_MODE).toBe(name === 'Chat' ? 'response_stream' : undefined);
+    }
+  }
+  expect(code.size).toBe(1);
+});
+
+// The backend boots each function with exactly this environment (backend/tests/
+// test_function_env.py). Regenerate with UPDATE_FUNCTION_ENV=1 after an intended change.
+describe('function environments shared with the backend tests', () => {
+  it('match the checked-in fixture', () => {
+    const template = Template.fromStack(stacks().api);
+    const functions = template.findResources('AWS::Lambda::Function');
+    const actual: Record<string, { handler: string; environment: Record<string, string | null> }> = {};
+    for (const [logicalId, resource] of Object.entries(functions)) {
+      const match = /^(Chat|Ingest|Reconciler|Presign|Documents|Sessions)Function[0-9A-F]{8}$/.exec(logicalId);
+      if (match === null) continue;
+      const properties = resource.Properties as {
+        Handler: string;
+        Environment: { Variables: Record<string, unknown> };
+      };
+      // Literal values are kept; deploy-time references become null placeholders.
+      const environment = Object.fromEntries(
+        Object.entries(properties.Environment.Variables)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([name, value]) => [name, typeof value === 'string' ? value : null]),
+      );
+      actual[`${match[1]}Function`] = { handler: properties.Handler, environment };
+    }
+    const fixture = path.join(__dirname, '..', '..', 'backend', 'tests', 'fixtures', 'function-env.json');
+    const serialized = `${JSON.stringify(actual, null, 2)}\n`;
+    if (process.env.UPDATE_FUNCTION_ENV === '1') {
+      writeFileSync(fixture, serialized);
+    }
+    expect(Object.keys(actual).sort()).toEqual([
+      'ChatFunction', 'DocumentsFunction', 'IngestFunction', 'PresignFunction', 'ReconcilerFunction', 'SessionsFunction',
+    ]);
+    expect(JSON.parse(readFileSync(fixture, 'utf8'))).toEqual(actual);
   });
 });

@@ -22,3 +22,8 @@ coverage/
 # Claude Code local worktree copies — never commit
 .claude/worktrees/
 node_modules
+
+# Local validation and package caches
+.cache/
+.mypy_cache/
+.ruff_cache/

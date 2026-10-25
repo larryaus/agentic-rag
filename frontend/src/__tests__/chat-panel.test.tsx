@@ -24,12 +24,16 @@ vi.mock('../auth/auth', () => ({ getAccessToken: mocks.getAccessToken }));
 vi.mock('../api/sse', () => ({ streamChat: mocks.streamChat }));
 
 const config: AppConfig = {
-  userPoolId: 'pool',
-  userPoolClientId: 'client',
-  cognitoDomain: 'https://auth.example.test',
+  oidcIssuer: 'https://auth.example.test',
+  oidcClientId: 'client',
+  oidcAuthorizeUrl: 'https://auth.example.test/authorize',
+  oidcTokenUrl: 'https://auth.example.test/token',
+  oidcJwksUrl: 'https://auth.example.test/jwks',
+  oidcScope: 'openid kb-api/access',
+  oidcLogoutUrl: 'https://auth.example.test/logout',
+  oidcLogoutMode: 'cognito',
   apiUrl: 'https://api.example.test',
   chatUrl: 'https://chat.example.test',
-  awsRegion: 'us-east-1',
 };
 const initialMessages: MessageView[] = [];
 

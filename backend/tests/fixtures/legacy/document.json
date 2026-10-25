@@ -1,0 +1,43 @@
+{
+  "document": {
+    "pk": "DOC#d76d25db-7a43-44eb-849d-eb40b54354d2",
+    "sk": "META",
+    "gsi1pk": "ORG#DOCUMENT",
+    "gsi1sk": "2026-01-01T00:00:00.123Z",
+    "documentId": "d76d25db-7a43-44eb-849d-eb40b54354d2",
+    "uploaderSub": "owner",
+    "title": "a.txt",
+    "s3Key": "uploads/owner/d76d25db-7a43-44eb-849d-eb40b54354d2/a.txt",
+    "contentType": "text/plain",
+    "sizeBytes": 123,
+    "status": "UPLOADING",
+    "uploadedAt": "2026-01-01T00:00:00.123Z",
+    "updatedAt": "2026-01-01T00:00:00.123Z"
+  },
+  "sidecar": {
+    "metadataAttributes": {
+      "documentId": {
+        "value": {
+          "type": "STRING",
+          "stringValue": "d76d25db-7a43-44eb-849d-eb40b54354d2"
+        },
+        "includeForEmbedding": false
+      },
+      "uploaderSub": {
+        "value": {
+          "type": "STRING",
+          "stringValue": "owner"
+        },
+        "includeForEmbedding": false
+      },
+      "uploadedAt": {
+        "value": {
+          "type": "NUMBER",
+          "numberValue": 1767225600
+        },
+        "includeForEmbedding": false
+      }
+    }
+  },
+  "sidecarBody": "{\"metadataAttributes\":{\"documentId\":{\"value\":{\"type\":\"STRING\",\"stringValue\":\"d76d25db-7a43-44eb-849d-eb40b54354d2\"},\"includeForEmbedding\":false},\"uploaderSub\":{\"value\":{\"type\":\"STRING\",\"stringValue\":\"owner\"},\"includeForEmbedding\":false},\"uploadedAt\":{\"value\":{\"type\":\"NUMBER\",\"numberValue\":1767225600},\"includeForEmbedding\":false}}}"
+}

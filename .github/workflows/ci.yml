@@ -12,6 +12,17 @@ jobs:
   verify:
     name: Verify
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -22,13 +33,21 @@ jobs:
         with:
           python-version: '3.12'
       - run: npm ci
-      - name: Install the evaluation test environment
+      - name: Install the Python test environment
         run: |
           python -m venv .venv
-          .venv/bin/python -m pip install -e './evals[test]'
-      # Typecheck, lint, tests, frontend build, offline cdk synth, and the Python
-      # dataset tests. None of it needs AWS credentials.
+          .venv/bin/python -m pip install -c backend/requirements-aws.lock -c backend/requirements-local.lock -e './backend[aws,local,dev]' -e './evals[test]'
+      # The artifact gate boots the ARM64 package on x86 runners using QEMU.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
       - run: npm run verify
+      - run: npm run verify:artifact
+      # The local deployment's image must build from a clean checkout.
+      - name: Build the local deployment image
+        run: |
+          cp .env.example .env
+          docker compose build app
 
   plan:
     name: Plan infrastructure
@@ -52,6 +71,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
       - run: npm ci
       # A read-only role (KbFrontendStack): it can compare templates but change nothing.
       - uses: aws-actions/configure-aws-credentials@v6
@@ -105,6 +127,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
       - run: npm ci
       - uses: aws-actions/configure-aws-credentials@v6
         with:

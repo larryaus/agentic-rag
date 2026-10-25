@@ -1,0 +1,38 @@
+[
+  {
+    "input": "../../etc/passwd.txt",
+    "output": "passwd.txt"
+  },
+  {
+    "input": "a\\b\\c.md",
+    "output": "c.md"
+  },
+  {
+    "input": "恶意📦report---.md",
+    "output": "report-.md"
+  },
+  {
+    "input": "恶意📦",
+    "output": ""
+  },
+  {
+    "input": "...",
+    "output": "."
+  },
+  {
+    "input": "___---...",
+    "output": "_-."
+  },
+  {
+    "input": "foo.metadata.json",
+    "output": "foo.metadata.json"
+  },
+  {
+    "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.pdf",
+    "output": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+    "input": "a b+.TXT",
+    "output": "ab.TXT"
+  }
+]

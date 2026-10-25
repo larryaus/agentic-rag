@@ -1,0 +1,27 @@
+# Runs the stack against a deterministic fake model, for testing without an API key:
+#   docker compose -f docker-compose.yml -f docker-compose.fake-llm.yml up --build
+services:
+  fake-llm:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: kb-assistant:local
+    command: ["uvicorn", "fake_llm_server:app", "--app-dir", "/tests", "--host", "0.0.0.0", "--port", "8080"]
+    volumes:
+      - ./backend/tests:/tests:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    environment:
+      LLM_BASE_URL: http://fake-llm:8080/v1
+      LLM_API_KEY: fake
+      LLM_MODEL: fake
+      EMBEDDING_MODEL: fake-embedding
+      EMBEDDING_DIMENSION: "1536"
+    depends_on:
+      fake-llm:
+        condition: service_healthy

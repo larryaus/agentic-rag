@@ -1,7 +1,8 @@
 /**
  * Authorization code + PKCE is paired with state and a signature-verified nonce claim.
+ * Works with any OpenID Connect provider; Cognito differs only in its logout parameters.
  */
-import { CognitoJwtVerifier, JwtVerifier } from 'aws-jwt-verify';
+import { JwtVerifier } from 'aws-jwt-verify';
 
 import type { AppConfig } from '../config';
 
@@ -62,7 +63,7 @@ function parseTokenResponse(
     typeof payload.id_token !== 'string' ||
     typeof payload.expires_in !== 'number'
   ) {
-    throw new Error('Cognito returned an invalid token response');
+    throw new Error('The identity provider returned an invalid token response');
   }
   const refreshToken =
     typeof payload.refresh_token === 'string'
@@ -80,13 +81,13 @@ async function tokenRequest(
   config: AppConfig,
   params: URLSearchParams,
 ): Promise<TokenResponse> {
-  const response = await fetch(`${config.cognitoDomain}/oauth2/token`, {
+  const response = await fetch(config.oidcTokenUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: params,
   });
   if (!response.ok) {
-    throw new Error('Cognito token exchange failed');
+    throw new Error('Token exchange failed');
   }
   return (await response.json()) as TokenResponse;
 }
@@ -101,16 +102,16 @@ export async function beginLogin(config: AppConfig): Promise<void> {
 
   const params = new URLSearchParams({
     response_type: 'code',
-    client_id: config.userPoolClientId,
+    client_id: config.oidcClientId,
     redirect_uri: redirectUri(),
-    scope: 'openid email profile kb-api/access',
+    scope: config.oidcScope,
     code_challenge_method: 'S256',
     code_challenge: await challenge(codeVerifier),
     state,
     nonce,
   });
   window.location.assign(
-    `${config.cognitoDomain}/oauth2/authorize?${params.toString()}`,
+    `${config.oidcAuthorizeUrl}?${params.toString()}`,
   );
 }
 
@@ -119,32 +120,10 @@ async function verifyCallbackIdToken(
   idToken: string,
   nonce: string,
 ): Promise<void> {
-  // Local development only. `VITE_MOCK_JWKS_URI` points at the mock identity
-  // provider in tools/mock-server.mjs, whose JWKS is not reachable at the
-  // cognito-idp URL CognitoJwtVerifier derives from a pool id. The token is
-  // still verified cryptographically — signature, issuer, audience, and nonce.
-  // A deployed build never sets this variable and takes the Cognito path below.
-  const mockJwksUri = import.meta.env.VITE_MOCK_JWKS_URI;
-  if (mockJwksUri !== undefined && mockJwksUri.trim() !== '') {
-    const mockVerifier = JwtVerifier.create({
-      issuer: config.cognitoDomain,
-      audience: config.userPoolClientId,
-      jwksUri: mockJwksUri,
-    });
-    await mockVerifier.verify(idToken, {
-      customJwtCheck: ({ payload }) => {
-        if (payload.nonce !== nonce) {
-          throw new Error('ID token nonce mismatch');
-        }
-      },
-    });
-    return;
-  }
-
-  const verifier = CognitoJwtVerifier.create({
-    userPoolId: config.userPoolId,
-    tokenUse: 'id',
-    clientId: config.userPoolClientId,
+  const verifier = JwtVerifier.create({
+    issuer: config.oidcIssuer,
+    audience: config.oidcClientId,
+    jwksUri: config.oidcJwksUrl,
   });
   await verifier.verify(idToken, {
     customJwtCheck: ({ payload }) => {
@@ -177,7 +156,7 @@ export async function completeCallback(config: AppConfig): Promise<TokenSet> {
       config,
       new URLSearchParams({
         grant_type: 'authorization_code',
-        client_id: config.userPoolClientId,
+        client_id: config.oidcClientId,
         code,
         redirect_uri: redirectUri(),
         code_verifier: codeVerifier,
@@ -229,7 +208,7 @@ export async function getAccessToken(config: AppConfig): Promise<string> {
     config,
     new URLSearchParams({
       grant_type: 'refresh_token',
-      client_id: config.userPoolClientId,
+      client_id: config.oidcClientId,
       refresh_token: tokens.refreshToken,
     }),
   );
@@ -243,12 +222,15 @@ export function clearTokens(): void {
 }
 
 export function logout(config: AppConfig): void {
+  const idToken = readTokens()?.idToken;
   clearTokens();
-  const params = new URLSearchParams({
-    client_id: config.userPoolClientId,
-    logout_uri: window.location.origin,
-  });
-  window.location.assign(
-    `${config.cognitoDomain}/logout?${params.toString()}`,
-  );
+  const params = new URLSearchParams({ client_id: config.oidcClientId });
+  if (config.oidcLogoutMode === 'cognito') {
+    params.set('logout_uri', window.location.origin);
+  } else {
+    params.set('post_logout_redirect_uri', window.location.origin);
+    // The hint lets a standard provider end the session without asking to confirm.
+    if (idToken !== undefined) params.set('id_token_hint', idToken);
+  }
+  window.location.assign(`${config.oidcLogoutUrl}?${params.toString()}`);
 }

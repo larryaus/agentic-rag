@@ -1,0 +1,294 @@
+{
+  "documentStatuses": [
+    "UPLOADING",
+    "PENDING",
+    "INGESTING",
+    "READY",
+    "FAILED"
+  ],
+  "documentSummaries": [
+    {
+      "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "title": "Guide.md",
+      "contentType": "text/markdown",
+      "sizeBytes": 123,
+      "status": "UPLOADING",
+      "uploadedAt": "2026-01-01T00:00:00.123Z"
+    },
+    {
+      "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "title": "Guide.md",
+      "contentType": "text/markdown",
+      "sizeBytes": 123,
+      "status": "PENDING",
+      "uploadedAt": "2026-01-01T00:00:00.123Z"
+    },
+    {
+      "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "title": "Guide.md",
+      "contentType": "text/markdown",
+      "sizeBytes": 123,
+      "status": "INGESTING",
+      "uploadedAt": "2026-01-01T00:00:00.123Z"
+    },
+    {
+      "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "title": "Guide.md",
+      "contentType": "text/markdown",
+      "sizeBytes": 123,
+      "status": "READY",
+      "uploadedAt": "2026-01-01T00:00:00.123Z"
+    },
+    {
+      "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "title": "Guide.md",
+      "contentType": "text/markdown",
+      "sizeBytes": 123,
+      "status": "FAILED",
+      "uploadedAt": "2026-01-01T00:00:00.123Z"
+    }
+  ],
+  "sessionSummaries": [
+    {
+      "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "title": "First question",
+      "createdAt": "2026-01-01T00:00:00.123Z",
+      "updatedAt": "2026-01-01T00:00:00.123Z",
+      "messageCount": 2
+    }
+  ],
+  "messageViews": [
+    {
+      "role": "user",
+      "content": "Question",
+      "citations": [],
+      "createdAt": "2026-01-01T00:00:00.123Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Answer [ref:1]",
+      "citations": [
+        {
+          "ref": 1,
+          "title": "日本語.md",
+          "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "score": 0.875,
+          "snippet": "café"
+        }
+      ],
+      "createdAt": "2026-01-01T00:00:00.123Z"
+    }
+  ],
+  "sessionDetails": [
+    {
+      "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "title": "First question",
+      "createdAt": "2026-01-01T00:00:00.123Z",
+      "updatedAt": "2026-01-01T00:00:00.123Z",
+      "messageCount": 2,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Question",
+          "citations": [],
+          "createdAt": "2026-01-01T00:00:00.123Z"
+        },
+        {
+          "role": "assistant",
+          "content": "Answer [ref:1]",
+          "citations": [
+            {
+              "ref": 1,
+              "title": "日本語.md",
+              "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+              "score": 0.875,
+              "snippet": "café"
+            }
+          ],
+          "createdAt": "2026-01-01T00:00:00.123Z"
+        }
+      ]
+    },
+    {
+      "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "title": "First question",
+      "createdAt": "2026-01-01T00:00:00.123Z",
+      "updatedAt": "2026-01-01T00:00:00.123Z",
+      "messageCount": 2,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Question",
+          "citations": [],
+          "createdAt": "2026-01-01T00:00:00.123Z"
+        },
+        {
+          "role": "assistant",
+          "content": "Answer [ref:1]",
+          "citations": [
+            {
+              "ref": 1,
+              "title": "日本語.md",
+              "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+              "score": 0.875,
+              "snippet": "café"
+            }
+          ],
+          "createdAt": "2026-01-01T00:00:00.123Z"
+        }
+      ],
+      "nextToken": "opaque-token"
+    }
+  ],
+  "documentPages": [
+    {
+      "items": [
+        {
+          "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "title": "Guide.md",
+          "contentType": "text/markdown",
+          "sizeBytes": 123,
+          "status": "UPLOADING",
+          "uploadedAt": "2026-01-01T00:00:00.123Z"
+        },
+        {
+          "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "title": "Guide.md",
+          "contentType": "text/markdown",
+          "sizeBytes": 123,
+          "status": "PENDING",
+          "uploadedAt": "2026-01-01T00:00:00.123Z"
+        },
+        {
+          "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "title": "Guide.md",
+          "contentType": "text/markdown",
+          "sizeBytes": 123,
+          "status": "INGESTING",
+          "uploadedAt": "2026-01-01T00:00:00.123Z"
+        },
+        {
+          "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "title": "Guide.md",
+          "contentType": "text/markdown",
+          "sizeBytes": 123,
+          "status": "READY",
+          "uploadedAt": "2026-01-01T00:00:00.123Z"
+        },
+        {
+          "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "title": "Guide.md",
+          "contentType": "text/markdown",
+          "sizeBytes": 123,
+          "status": "FAILED",
+          "uploadedAt": "2026-01-01T00:00:00.123Z"
+        }
+      ]
+    },
+    {
+      "items": [],
+      "nextToken": "opaque-token"
+    }
+  ],
+  "sessionPages": [
+    {
+      "items": [
+        {
+          "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "title": "First question",
+          "createdAt": "2026-01-01T00:00:00.123Z",
+          "updatedAt": "2026-01-01T00:00:00.123Z",
+          "messageCount": 2
+        }
+      ]
+    },
+    {
+      "items": [],
+      "nextToken": "opaque-token"
+    }
+  ],
+  "uploadRequests": [
+    {
+      "filename": "Guide.md",
+      "contentType": "text/markdown",
+      "sizeBytes": 123
+    }
+  ],
+  "uploadResponses": [
+    {
+      "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "uploadUrl": "https://signed.example/put",
+      "key": "uploads/owner/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/Guide.md",
+      "expiresIn": 300
+    }
+  ],
+  "citations": [
+    {
+      "ref": 1,
+      "title": "日本語.md",
+      "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "score": 0.875,
+      "snippet": "café"
+    }
+  ],
+  "usages": [
+    {
+      "inputTokens": 100,
+      "outputTokens": 20
+    }
+  ],
+  "sseEvents": [
+    {
+      "type": "session",
+      "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    },
+    {
+      "type": "tool_use",
+      "name": "search_knowledge_base",
+      "input": {}
+    },
+    {
+      "type": "tool_use",
+      "name": "search_knowledge_base",
+      "input": {
+        "query": "日本語 café",
+        "score": 1,
+        "tiny": 1e-7,
+        "large": 1e+21
+      }
+    },
+    {
+      "type": "citation",
+      "ref": 1,
+      "title": "日本語.md",
+      "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "score": 0.875,
+      "snippet": "café"
+    },
+    {
+      "type": "citation",
+      "ref": 2,
+      "title": "one",
+      "documentId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "score": 1,
+      "snippet": ""
+    },
+    {
+      "type": "text",
+      "delta": "Hello\n世界 😀 \"\\"
+    },
+    {
+      "type": "done",
+      "sessionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "stopReason": "end_turn",
+      "usage": {
+        "inputTokens": 100,
+        "outputTokens": 20
+      }
+    },
+    {
+      "type": "error",
+      "message": "Please try again."
+    }
+  ]
+}

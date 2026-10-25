@@ -1,0 +1,99 @@
+{
+  "ChatFunction": {
+    "handler": "run.sh",
+    "environment": {
+      "AWS_LAMBDA_EXEC_WRAPPER": "/opt/bootstrap",
+      "AWS_LWA_INVOKE_MODE": "response_stream",
+      "AWS_LWA_PORT": "8080",
+      "AWS_LWA_READINESS_CHECK_PATH": "/healthz",
+      "CHAT_MODEL_ID": "us.anthropic.test-model-v1:0",
+      "DEPLOY_TARGET": "aws",
+      "GUARDRAIL_ID": null,
+      "GUARDRAIL_VERSION": null,
+      "KB_ROUTES": "chat",
+      "KNOWLEDGE_BASE_ID": null,
+      "MAX_HISTORY_MESSAGES": "20",
+      "MAX_TOOL_ITERATIONS": "6",
+      "OIDC_CLIENT_ID": null,
+      "OIDC_ISSUER": null,
+      "OIDC_JWKS_URL": null,
+      "OIDC_REQUIRED_SCOPE": "kb-api/access",
+      "RETRIEVAL_TOP_K": "8",
+      "SESSION_TTL_DAYS": "90",
+      "TABLE_NAME": null,
+      "USER_POOL_CLIENT_ID": null,
+      "USER_POOL_ID": null
+    }
+  },
+  "IngestFunction": {
+    "handler": "kb_assistant.adapters.aws.lambda_events.ingest_handler",
+    "environment": {
+      "DATA_SOURCE_ID": null,
+      "DEPLOY_TARGET": "aws",
+      "DOCS_BUCKET": null,
+      "KNOWLEDGE_BASE_ID": null,
+      "MAX_UPLOAD_BYTES": "26214400",
+      "TABLE_NAME": null
+    }
+  },
+  "ReconcilerFunction": {
+    "handler": "kb_assistant.adapters.aws.lambda_events.reconciler_handler",
+    "environment": {
+      "ABANDONED_UPLOAD_MINUTES": "10",
+      "DATA_SOURCE_ID": null,
+      "DEPLOY_TARGET": "aws",
+      "DOCS_BUCKET": null,
+      "KNOWLEDGE_BASE_ID": null,
+      "MAX_UPLOAD_BYTES": "26214400",
+      "TABLE_NAME": null
+    }
+  },
+  "PresignFunction": {
+    "handler": "run.sh",
+    "environment": {
+      "AWS_LAMBDA_EXEC_WRAPPER": "/opt/bootstrap",
+      "AWS_LWA_PORT": "8080",
+      "AWS_LWA_READINESS_CHECK_PATH": "/healthz",
+      "DEPLOY_TARGET": "aws",
+      "DOCS_BUCKET": null,
+      "KB_ROUTES": "uploads",
+      "MAX_UPLOAD_BYTES": "26214400",
+      "OIDC_CLIENT_ID": null,
+      "OIDC_ISSUER": null,
+      "OIDC_JWKS_URL": null,
+      "OIDC_REQUIRED_SCOPE": "kb-api/access",
+      "TABLE_NAME": null
+    }
+  },
+  "DocumentsFunction": {
+    "handler": "run.sh",
+    "environment": {
+      "AWS_LAMBDA_EXEC_WRAPPER": "/opt/bootstrap",
+      "AWS_LWA_PORT": "8080",
+      "AWS_LWA_READINESS_CHECK_PATH": "/healthz",
+      "DEPLOY_TARGET": "aws",
+      "DOCS_BUCKET": null,
+      "KB_ROUTES": "documents",
+      "OIDC_CLIENT_ID": null,
+      "OIDC_ISSUER": null,
+      "OIDC_JWKS_URL": null,
+      "OIDC_REQUIRED_SCOPE": "kb-api/access",
+      "TABLE_NAME": null
+    }
+  },
+  "SessionsFunction": {
+    "handler": "run.sh",
+    "environment": {
+      "AWS_LAMBDA_EXEC_WRAPPER": "/opt/bootstrap",
+      "AWS_LWA_PORT": "8080",
+      "AWS_LWA_READINESS_CHECK_PATH": "/healthz",
+      "DEPLOY_TARGET": "aws",
+      "KB_ROUTES": "sessions",
+      "OIDC_CLIENT_ID": null,
+      "OIDC_ISSUER": null,
+      "OIDC_JWKS_URL": null,
+      "OIDC_REQUIRED_SCOPE": "kb-api/access",
+      "TABLE_NAME": null
+    }
+  }
+}

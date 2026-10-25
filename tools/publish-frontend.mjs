@@ -74,26 +74,33 @@ function output(stack, key) {
   return value;
 }
 
-// The mock configuration trusts a localhost JWKS. Refuse to build on top of it rather
-// than risk that variable reaching a deployed bundle.
+// The mock configuration trusts a localhost issuer. Refuse to build on top of it rather
+// than risk that issuer reaching a deployed bundle.
 if (
   existsSync(envPath) &&
-  readFileSync(envPath, 'utf8').includes('VITE_MOCK_JWKS_URI')
+  /^VITE_OIDC_ISSUER=http:\/\/localhost/m.test(readFileSync(envPath, 'utf8'))
 ) {
   fail(
-    'frontend/.env is the local mock configuration. Move it to frontend/.env.mock ' +
+    'frontend/.env points at a localhost issuer. Move it to frontend/.env.mock ' +
       '(used by `npm run dev:mock`) and re-run.',
   );
 }
 
 const region = output('KbAuthStack', 'Region');
+const issuer = `https://cognito-idp.${region}.amazonaws.com/${output('KbAuthStack', 'UserPoolId')}`;
+const hostedUi = `https://${output('KbAuthStack', 'CognitoDomainPrefix')}.auth.${region}.amazoncognito.com`;
 const env = {
-  VITE_USER_POOL_ID: output('KbAuthStack', 'UserPoolId'),
-  VITE_USER_POOL_CLIENT_ID: output('KbAuthStack', 'UserPoolClientId'),
-  VITE_COGNITO_DOMAIN: `https://${output('KbAuthStack', 'CognitoDomainPrefix')}.auth.${region}.amazoncognito.com`,
+  VITE_OIDC_ISSUER: issuer,
+  VITE_OIDC_CLIENT_ID: output('KbAuthStack', 'UserPoolClientId'),
+  VITE_OIDC_AUTHORIZE_URL: `${hostedUi}/oauth2/authorize`,
+  VITE_OIDC_TOKEN_URL: `${hostedUi}/oauth2/token`,
+  VITE_OIDC_JWKS_URL: `${issuer}/.well-known/jwks.json`,
+  VITE_OIDC_SCOPE: 'openid email profile kb-api/access',
+  VITE_OIDC_LOGOUT_URL: `${hostedUi}/logout`,
+  VITE_OIDC_LOGOUT_MODE: 'cognito',
   VITE_API_URL: output('KbApiStack', 'HttpApiUrl'),
+  // The chat function answers at its URL root, which deployed clients already use.
   VITE_CHAT_URL: output('KbApiStack', 'ChatFunctionUrl'),
-  VITE_AWS_REGION: region,
 };
 writeFileSync(
   envPath,

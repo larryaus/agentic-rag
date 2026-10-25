@@ -1,0 +1,80 @@
+# The local deployment: cp .env.example .env, set LLM_API_KEY, then docker compose up --build
+# and open http://localhost:8000 (sign in as demo / demo-password).
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg17
+    environment:
+      POSTGRES_DB: kb
+      POSTGRES_USER: kb
+      POSTGRES_PASSWORD: kb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kb -d kb"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # Tokens name the issuer the browser uses; the app fetches keys over the
+      # compose network instead.
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
+    # Bound to this machine only: start-dev, admin/admin and plain HTTP are for local use.
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./docker/keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"UP"' <&3
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: kb-assistant:local
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://kb:kb@postgres:5432/kb
+      OIDC_ISSUER: http://localhost:8080/realms/kb
+      OIDC_JWKS_URL: http://keycloak:8080/realms/kb/protocol/openid-connect/certs
+      OIDC_CLIENT_ID: kb-web
+      OIDC_REQUIRED_SCOPE: kb-api
+      PUBLIC_BASE_URL: http://localhost:8000
+    volumes:
+      - blobs:/data/blobs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+  # Optional local model: docker compose --profile ollama up (see README).
+  ollama:
+    image: ollama/ollama:0.40.11
+    profiles: ["ollama"]
+    environment:
+      OLLAMA_CONTEXT_LENGTH: "32768"
+    volumes:
+      - ollama:/root/.ollama
+
+volumes:
+  pgdata:
+  blobs:
+  ollama:
