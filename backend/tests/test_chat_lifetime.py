@@ -1,6 +1,7 @@
 import asyncio
 
 import pytest
+from test_agent import Model
 from test_api import api, client  # noqa: F401
 
 from kb_assistant.api.chat import ChatResponse
@@ -73,14 +74,23 @@ async def test_deadline_bounds_stalled_turn():
 
 
 async def test_model_deadline_persists_failure_before_response_returns(client, api):  # noqa: F811
-    class Stalled:
-        async def stream(self, *args):
-            await asyncio.Future()
+    stalled = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    class Stalled(Model):
+        async def stream(self, *args, **kwargs):
+            stalled.set()
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
             yield
 
     api[1].model = Stalled()
     api[1].settings.chat_turn_deadline_seconds = 0.3
     response = await client.post("/", json={"message": "question"})
+    assert stalled.is_set() and cancelled.is_set()
     assert "event: error" in response.text
     session = (await api[1].store.list_sessions("owner", 25, None))["items"][0]
     rows = (await api[1].store.list_messages(session["sessionId"], 50))["items"]
