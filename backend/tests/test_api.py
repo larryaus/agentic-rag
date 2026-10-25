@@ -4,12 +4,12 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-from test_agent import Model, Retrieval
+from test_agent import Model, Retrieval, Stop, TextDelta
 
 from kb_assistant.adapters.aws.ddb_codec import to_ddb
 from kb_assistant.adapters.aws.ddb_store import DdbStore
 from kb_assistant.app import create_app
-from kb_assistant.core.ports import AuthContext, Stop, TextDelta
+from kb_assistant.core.ports import AuthContext
 from kb_assistant.errors import AgentStreamError, UnauthorizedError
 from kb_assistant.settings import Settings
 
@@ -165,7 +165,7 @@ async def test_legacy_routes_and_continue_session(client, api, table, legacy):
     detail = (await client.get(f"/v1/sessions/{sid}")).json()
     assert detail["messageCount"] == 2  # Legacy fixture starts with count zero.
     assert [r["content"] for r in detail["messages"]][-2:] == ["next", "answer"]
-    assert len(api[1].model.calls[0][1]) == 3  # Old complete pair, then the question.
+    assert len(api[1].model.calls[0]["messages"]) == 3  # Old complete pair, then the question.
 
 
 async def test_session_json_preserves_utf16_slices(client, api, legacy):

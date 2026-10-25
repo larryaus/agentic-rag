@@ -12,14 +12,33 @@ anyio==4.15.1
     # via
     #   -c backend/requirements-aws.lock
     #   httpx
+    #   httpx2
+    #   mcp
     #   openai
+    #   sse-starlette
     #   starlette
 asyncpg==0.32.0
     # via kb-assistant (backend/pyproject.toml)
+attrs==26.1.0
+    # via
+    #   -c backend/requirements-aws.lock
+    #   jsonschema
+    #   referencing
 beautifulsoup4==4.15.0
     # via kb-assistant (backend/pyproject.toml)
+boto3==1.40.57
+    # via
+    #   -c backend/requirements-aws.lock
+    #   strands-agents
+botocore==1.40.76
+    # via
+    #   -c backend/requirements-aws.lock
+    #   boto3
+    #   s3transfer
+    #   strands-agents
 certifi==2026.10.23
     # via
+    #   -c backend/requirements-aws.lock
     #   httpcore
     #   httpx
 cffi==2.1.1 ; platform_python_implementation != 'PyPy'
@@ -38,6 +57,10 @@ cryptography==50.0.2
     #   pyjwt
 distro==1.9.0
     # via openai
+docstring-parser==0.18.0
+    # via
+    #   -c backend/requirements-aws.lock
+    #   strands-agents
 fastapi==0.162.0
     # via
     #   -c backend/requirements-aws.lock
@@ -46,24 +69,90 @@ h11==0.16.0
     # via
     #   -c backend/requirements-aws.lock
     #   httpcore
+    #   httpcore2
     #   uvicorn
 httpcore==1.0.9
-    # via httpx
+    # via
+    #   -c backend/requirements-aws.lock
+    #   httpx
+httpcore2==2.16.0 ; sys_platform != 'emscripten'
+    # via
+    #   -c backend/requirements-aws.lock
+    #   httpx2
 httpx==0.28.1
-    # via openai
+    # via
+    #   -c backend/requirements-aws.lock
+    #   openai
+    #   strands-agents
+httpx2==2.16.0
+    # via
+    #   -c backend/requirements-aws.lock
+    #   mcp
+httpx2-jsfetch==1.0 ; sys_platform == 'emscripten'
+    # via httpx2
 idna==3.20
     # via
     #   -c backend/requirements-aws.lock
     #   anyio
     #   httpx
+    #   httpx2
 jiter==0.18.0
     # via openai
+jmespath==1.1.0
+    # via
+    #   -c backend/requirements-aws.lock
+    #   boto3
+    #   botocore
+jsonschema==4.26.0
+    # via
+    #   -c backend/requirements-aws.lock
+    #   mcp
+    #   strands-agents
+jsonschema-specifications==2025.9.1
+    # via
+    #   -c backend/requirements-aws.lock
+    #   jsonschema
+mcp==2.1.1
+    # via
+    #   -c backend/requirements-aws.lock
+    #   strands-agents
+mcp-types==2.1.1
+    # via
+    #   -c backend/requirements-aws.lock
+    #   mcp
 openai==2.54.0
     # via kb-assistant (backend/pyproject.toml)
 opentelemetry-api==1.45.1
     # via
     #   -c backend/requirements-aws.lock
     #   fastapi
+    #   mcp
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-threading
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+    #   strands-agents
+opentelemetry-instrumentation==0.66b1
+    # via
+    #   -c backend/requirements-aws.lock
+    #   opentelemetry-instrumentation-threading
+opentelemetry-instrumentation-threading==0.66b1
+    # via
+    #   -c backend/requirements-aws.lock
+    #   strands-agents
+opentelemetry-sdk==1.45.1
+    # via
+    #   -c backend/requirements-aws.lock
+    #   strands-agents
+opentelemetry-semantic-conventions==0.66b1
+    # via
+    #   -c backend/requirements-aws.lock
+    #   opentelemetry-instrumentation
+    #   opentelemetry-sdk
+packaging==26.3
+    # via
+    #   -c backend/requirements-aws.lock
+    #   opentelemetry-instrumentation
 pgvector==0.5.1
     # via kb-assistant (backend/pyproject.toml)
 pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
@@ -75,8 +164,11 @@ pydantic==2.14.1
     #   -c backend/requirements-aws.lock
     #   kb-assistant (backend/pyproject.toml)
     #   fastapi
+    #   mcp
+    #   mcp-types
     #   openai
     #   pydantic-settings
+    #   strands-agents
 pydantic-core==2.50.1
     # via
     #   -c backend/requirements-aws.lock
@@ -89,46 +181,116 @@ pyjwt==2.15.1
     # via
     #   -c backend/requirements-aws.lock
     #   kb-assistant (backend/pyproject.toml)
+    #   mcp
 pypdf==6.21.2
     # via kb-assistant (backend/pyproject.toml)
+python-dateutil==2.9.0.post0
+    # via
+    #   -c backend/requirements-aws.lock
+    #   botocore
 python-dotenv==1.2.4
     # via
     #   -c backend/requirements-aws.lock
     #   pydantic-settings
+python-multipart==0.0.32
+    # via
+    #   -c backend/requirements-aws.lock
+    #   mcp
+pywin32==312 ; sys_platform == 'win32'
+    # via mcp
+pyyaml==6.0.3
+    # via
+    #   -c backend/requirements-aws.lock
+    #   strands-agents
+referencing==0.37.0
+    # via
+    #   -c backend/requirements-aws.lock
+    #   jsonschema
+    #   jsonschema-specifications
 regex==2026.9.29
     # via
     #   -c backend/requirements-aws.lock
     #   kb-assistant (backend/pyproject.toml)
+rpds-py==2026.9.1
+    # via
+    #   -c backend/requirements-aws.lock
+    #   jsonschema
+    #   referencing
+s3transfer==0.14.0
+    # via
+    #   -c backend/requirements-aws.lock
+    #   boto3
+six==1.17.0
+    # via
+    #   -c backend/requirements-aws.lock
+    #   python-dateutil
 sniffio==1.3.1
     # via openai
 soupsieve==3.0.4
     # via beautifulsoup4
+sse-starlette==3.6.0
+    # via
+    #   -c backend/requirements-aws.lock
+    #   mcp
 starlette==1.10.0
     # via
     #   -c backend/requirements-aws.lock
     #   fastapi
+    #   mcp
+    #   sse-starlette
+strands-agents==1.62.0
+    # via
+    #   -c backend/requirements-aws.lock
+    #   kb-assistant (backend/pyproject.toml)
 tqdm==4.70.1
     # via openai
+truststore==0.10.5 ; sys_platform != 'emscripten'
+    # via
+    #   -c backend/requirements-aws.lock
+    #   httpcore2
+    #   httpx2
 typing-extensions==4.16.0
     # via
     #   -c backend/requirements-aws.lock
     #   anyio
     #   beautifulsoup4
     #   fastapi
+    #   httpx2
+    #   mcp
+    #   mcp-types
     #   openai
     #   opentelemetry-api
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   pydantic
     #   pydantic-core
     #   pydantic-settings
+    #   referencing
     #   starlette
+    #   strands-agents
     #   typing-inspection
 typing-inspection==0.4.4
     # via
     #   -c backend/requirements-aws.lock
     #   fastapi
+    #   mcp
     #   pydantic
     #   pydantic-settings
+urllib3==2.8.0
+    # via
+    #   -c backend/requirements-aws.lock
+    #   botocore
 uvicorn==0.54.0
     # via
     #   -c backend/requirements-aws.lock
     #   kb-assistant (backend/pyproject.toml)
+    #   mcp
+watchdog==6.0.0
+    # via
+    #   -c backend/requirements-aws.lock
+    #   strands-agents
+wrapt==2.5.1
+    # via
+    #   -c backend/requirements-aws.lock
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-threading

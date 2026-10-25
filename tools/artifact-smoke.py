@@ -72,8 +72,10 @@ def auth():
 def serve():
     import uvicorn
 
+    from strands.models import Model as StrandsModel
+
     from kb_assistant.app import create_app
-    from kb_assistant.core.ports import AuthContext, Stop, TextDelta, Usage
+    from kb_assistant.core.ports import AuthContext
 
     release = asyncio.Event()
     messages = []
@@ -91,13 +93,28 @@ def serve():
         async def list_documents(self, *args):
             raise RuntimeError("arn:artifact:private-exception-text")
 
-    class Model:
-        async def stream(self, *args):
-            yield TextDelta(0, "smoke ")
+    class Model(StrandsModel):
+        """A Strands model provider, so the shipped Strands agent loop runs the turn."""
+
+        def update_config(self, **config):
+            pass
+
+        def get_config(self):
+            return {}
+
+        async def structured_output(self, *args, **kwargs):
+            raise NotImplementedError
+            yield
+
+        async def stream(self, *args, **kwargs):
+            yield {"messageStart": {"role": "assistant"}}
+            yield {"contentBlockDelta": {"delta": {"text": "smoke "}}}
             await release.wait()
-            yield TextDelta(0, "answer")
-            yield Stop("end_turn")
-            yield Usage(1, 2)
+            yield {"contentBlockDelta": {"delta": {"text": "answer"}}}
+            yield {"contentBlockStop": {}}
+            yield {"messageStop": {"stopReason": "end_turn"}}
+            usage = {"inputTokens": 1, "outputTokens": 2, "totalTokens": 3}
+            yield {"metadata": {"usage": usage, "metrics": {"latencyMs": 0}}}
 
     class Verifier:
         async def verify(self, header):

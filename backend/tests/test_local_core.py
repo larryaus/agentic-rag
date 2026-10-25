@@ -1,23 +1,15 @@
 """Local-deployment pieces that need no database: guardrail, budget, chunking, loaders."""
 
 import json
+from copy import deepcopy
 
 import pytest
-from test_agent import DID, Model, Retrieval, run
+from test_agent import DID, Model, Retrieval, Stop, TextDelta, chunk, run, turn
 
 from kb_assistant.adapters.local.chunker import chunk_text, estimate_tokens
 from kb_assistant.adapters.local.guardrail import REFUSAL, LocalGuardrail
 from kb_assistant.adapters.local.loaders import extract_text
 from kb_assistant.core.budget import fit, size
-from kb_assistant.core.ports import Stop, TextDelta
-from kb_assistant.core.transcript import (
-    AssistantTurn,
-    TextBlock,
-    ToolResult,
-    ToolResults,
-    ToolUseBlock,
-    UserText,
-)
 from kb_assistant.errors import AgentStreamError, ModelStreamError
 
 
@@ -99,8 +91,16 @@ async def test_stream_failure_partial_result_is_masked():
 def _history(pairs, size):
     turns = []
     for index in range(pairs):
-        turns += [UserText(f"q{index} " + "h" * size), AssistantTurn([TextBlock(0, "a" * size)])]
+        turns += turn(f"q{index} " + "h" * size, "a" * size)
     return turns
+
+
+def _text(message):
+    return message["content"][0]["text"]
+
+
+def _hits(message):
+    return message["content"][0]["toolResult"]["content"][0]["json"]["results"]
 
 
 def _round(ref):
@@ -108,54 +108,64 @@ def _round(ref):
         dict(ref=ref + i, title="doc.md", documentId=DID, score=0.5, text="t" * 1500)
         for i in range(8)
     ]
-    call = ToolUseBlock(0, f"t{ref}", "search_knowledge_base", {"query": "q"})
+    call = {"toolUseId": f"t{ref}", "name": "search_knowledge_base", "input": {"query": "q"}}
+    result = {"toolUseId": f"t{ref}", "status": "success", "content": [{"json": {"results": hits}}]}
     return [
-        AssistantTurn([call]),
-        ToolResults([ToolResult(f"t{ref}", True, json_payload={"results": hits})]),
+        {"role": "assistant", "content": [{"toolUse": call}]},
+        {"role": "user", "content": [{"toolResult": result}]},
     ]
 
 
 def test_budget_drops_oldest_history_first_and_keeps_refs():
     history = _history(10, 4000)
-    current = [UserText("current question", guard=True)]
+    current = [{"role": "user", "content": [{"text": "current question"}]}]
     for round_index in range(5):
         current += _round(1 + round_index * 8)
-    transcript = history + current
-    fitted = fit("system", transcript, len(history), 90_000)
-    assert len("system") + sum(size(t) for t in fitted) <= 90_000
-    assert fitted[-len(current)].text == "current question"
+    messages = history + current
+    fitted = fit("system", messages, len(history), 90_000)
+    assert len("system") + sum(size(m) for m in fitted) <= 90_000
+    assert _text(fitted[-len(current)]) == "current question"
     kept_history = fitted[: len(fitted) - len(current)]
     # Whole pairs, newest kept.
     assert len(kept_history) % 2 == 0
     if kept_history:
-        assert kept_history[-2].text.startswith("q9")
+        assert _text(kept_history[-2]).startswith("q9")
     refs = [
         hit["ref"]
-        for t in fitted
-        if isinstance(t, ToolResults)
-        for hit in t.results[0].json_payload["results"]
+        for m in fitted
+        if "toolResult" in m["content"][0]
+        for hit in _hits(m)
     ]
     assert refs == list(range(1, 41))
 
 
 def test_budget_truncates_tool_text_when_history_is_not_enough():
-    current = [UserText("q", guard=True)]
+    current = [{"role": "user", "content": [{"text": "q"}]}]
     for round_index in range(5):
         current += _round(1 + round_index * 8)
     fitted = fit("s", current, 0, 30_000)
-    assert sum(size(t) for t in fitted) + 1 <= 30_000
-    hits = fitted[2].results[0].json_payload["results"]
+    assert sum(size(m) for m in fitted) + 1 <= 30_000
+    hits = _hits(fitted[2])
     assert all(set(hit) == {"ref", "title", "documentId", "score", "text"} for hit in hits)
-    # The original transcript is untouched.
-    assert current[2].results[0].json_payload["results"][0]["text"] == "t" * 1500
+    # The original messages are untouched.
+    assert _hits(current[2])[0]["text"] == "t" * 1500
 
 
 async def test_agent_applies_budget_only_when_configured():
     model = Model([TextDelta(0, "ok"), Stop("end_turn")], [TextDelta(0, "ok"), Stop("end_turn")])
     history = _history(3, 1000)
-    await run(model, Retrieval(), history=history)
-    await run(model, Retrieval(), history=history, max_context_chars=1500)
-    assert len(model.calls[0][1]) == 7 and len(model.calls[1][1]) == 1
+    await run(model, Retrieval(), history=deepcopy(history))
+    await run(model, Retrieval(), history=deepcopy(history), max_context_chars=1500)
+    assert len(model.calls[0]["messages"]) == 7 and len(model.calls[1]["messages"]) == 1
+
+
+async def test_budget_trims_each_call_but_keeps_the_full_history_for_the_next():
+    from test_agent import tool
+
+    model = Model([tool(), Stop("tool_use")], [TextDelta(0, "ok"), Stop("end_turn")])
+    await run(model, Retrieval([]), history=_history(3, 1000), max_context_chars=1500)
+    # Both calls drop the history; neither sees a trimmed copy left over from the other.
+    assert [len(call["messages"]) for call in model.calls] == [1, 3]
 
 
 def test_chunker_units_and_overlap():
@@ -234,3 +244,16 @@ async def test_running_out_of_tool_iterations_with_only_held_text_uses_the_fallb
     assert result["stopReason"] == "max_iterations"
     # The dropped tail leaves only the truncation mark, which is not an answer.
     assert result["text"].startswith("I could not complete this question")
+
+
+async def test_budget_never_drops_the_current_question_or_its_search():
+    from test_agent import tool
+
+    hits = [chunk("t" * 1500) for _ in range(4)]
+    model = Model([tool(), Stop("tool_use")], [TextDelta(0, "ok"), Stop("end_turn")])
+    await run(model, Retrieval(hits), history=_history(3, 1000), max_context_chars=3000)
+    second = model.calls[1]["messages"]
+    # History goes first; the question and the tool call stay, and results are shortened.
+    assert second[0] == {"role": "user", "content": [{"text": "question"}]}
+    assert "toolUse" in second[1]["content"][0]
+    assert all(len(hit["text"]) < 1500 for hit in _hits(second[2]))

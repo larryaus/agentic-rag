@@ -3,20 +3,14 @@ import json
 import httpx
 import pytest
 from openai import AsyncOpenAI
+from strands.event_loop.streaming import process_stream
 
-from kb_assistant.adapters.local.openai_chat import OpenAIChat, openai_messages
+from kb_assistant.adapters.local.openai_chat import OpenAIChat
 from kb_assistant.adapters.local.openai_embed import EmbeddingError, OpenAIEmbedder
-from kb_assistant.core.ports import Stop, TextDelta, ToolCall, Usage
 from kb_assistant.core.tools import SEARCH_TOOL
-from kb_assistant.core.transcript import (
-    AssistantTurn,
-    TextBlock,
-    ToolResult,
-    ToolResults,
-    ToolUseBlock,
-    UserText,
-)
 from kb_assistant.errors import ModelStreamError
+
+QUESTION = [{"role": "user", "content": [{"text": "q"}]}]
 
 
 def sse(*chunks, done=True):
@@ -68,31 +62,49 @@ def client_for(*responses, seen=None):
     )
 
 
-async def events_from(client):
-    return [
-        event
-        async for event in OpenAIChat("m", client=client).stream(
-            "system", [UserText("q", guard=True)], [SEARCH_TOOL], 2048
-        )
-    ]
+class Answer:
+    """The message, stop reason and usage Strands assembles from the adapter's stream."""
+
+    def __init__(self, stop):
+        self.reason, message, usage, _ = stop
+        self.text = "".join(block["text"] for block in message["content"] if "text" in block)
+        self.calls = [
+            (block["toolUse"]["toolUseId"], block["toolUse"]["name"], block["toolUse"]["input"])
+            for block in message["content"]
+            if "toolUse" in block
+        ]
+        self.usage = (usage["inputTokens"], usage["outputTokens"])
+
+
+async def answer_from(client, messages=QUESTION):
+    stream = OpenAIChat("m", client=client).stream(messages, [SEARCH_TOOL], "system")
+    stop = None
+    async for event in process_stream(stream):
+        if "stop" in event:
+            stop = event["stop"]
+    return Answer(stop)
 
 
 async def test_text_only_with_usage():
     seen = []
-    events = await events_from(
+    answer = await answer_from(
         client_for(sse(delta("Hel"), delta("lo"), delta(finish="stop"), USAGE), seen=seen)
     )
-    assert events == [TextDelta(0, "Hel"), TextDelta(0, "lo"), Stop("end_turn"), Usage(12, 5)]
+    assert (answer.text, answer.reason, answer.usage, answer.calls) == ("Hello", "end_turn", (12, 5), [])
     request = seen[0]
     assert request["stream"] is True and request["stream_options"] == {"include_usage": True}
-    assert request["messages"][0] == {"role": "system", "content": "system"}
+    assert request["model"] == "m" and request["max_tokens"] == 2048
+    assert request["messages"] == [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "q"},
+    ]
     assert request["tools"][0]["function"]["name"] == "search_knowledge_base"
 
 
 async def test_text_then_parallel_tool_calls_with_split_arguments():
     first = {"index": 0, "id": "a", "type": "function", "function": {"name": "search_knowledge_base", "arguments": '{"qu'}}
     second = {"index": 1, "id": "b", "type": "function", "function": {"name": "search_knowledge_base", "arguments": ""}}
-    events = await events_from(
+    answer = await answer_from(
         client_for(
             sse(
                 delta("Let me look."),
@@ -104,23 +116,20 @@ async def test_text_then_parallel_tool_calls_with_split_arguments():
             )
         )
     )
-    assert events == [
-        TextDelta(0, "Let me look."),
-        ToolCall(1, "a", "search_knowledge_base", {"query": "x"}),
-        ToolCall(2, "b", "search_knowledge_base", {"query": "y"}),
-        Stop("tool_use"),
-        Usage(0, 0),
+    assert answer.text == "Let me look." and answer.reason == "tool_use"
+    assert answer.calls == [
+        ("a", "search_knowledge_base", {"query": "x"}),
+        ("b", "search_knowledge_base", {"query": "y"}),
     ]
+    assert answer.usage == (0, 0)
 
 
 async def test_ollama_style_stop_with_tool_calls_and_missing_ids():
     call = {"index": 0, "type": "function", "function": {"name": "search_knowledge_base", "arguments": "not json"}}
-    events = await events_from(client_for(sse(delta(tool_calls=[call]), delta(finish="stop"))))
-    assert isinstance(events[0], ToolCall) and events[0].id == "call_0"
-    assert events[0].input == {} and events[0].input_error.startswith(
-        "Tool input was not a valid JSON object"
-    )
-    assert events[1] == Stop("tool_use")
+    answer = await answer_from(client_for(sse(delta(tool_calls=[call]), delta(finish="stop"))))
+    # Input that is not JSON reaches the tool as {}; the tool reports the missing query.
+    assert answer.calls == [("call_0", "search_knowledge_base", {})]
+    assert answer.reason == "tool_use"
 
 
 @pytest.mark.parametrize(
@@ -128,14 +137,14 @@ async def test_ollama_style_stop_with_tool_calls_and_missing_ids():
     [("length", "max_tokens"), ("content_filter", "content_filtered"), ("other", "other")],
 )
 async def test_finish_reasons(finish, reason):
-    events = await events_from(client_for(sse(delta("x"), delta(finish=finish))))
-    assert Stop(reason) in events
+    answer = await answer_from(client_for(sse(delta("x"), delta(finish=finish))))
+    assert answer.reason == reason
 
 
 async def test_mid_stream_error_raises_model_stream_error():
     broken = sse(delta("partial"), done=False) + "data: {not json\n\n"
     with pytest.raises(ModelStreamError):
-        await events_from(client_for(broken))
+        await answer_from(client_for(broken))
 
 
 async def test_stream_options_rejection_retries_without_it():
@@ -143,33 +152,42 @@ async def test_stream_options_rejection_retries_without_it():
     rejected = httpx.Response(
         400, json={"error": {"message": "Unrecognized request argument: stream_options"}}
     )
-    events = await events_from(
+    answer = await answer_from(
         client_for(rejected, sse(delta("ok"), delta(finish="stop")), seen=seen)
     )
     assert "stream_options" in seen[0] and "stream_options" not in seen[1]
-    assert events[-1] == Usage(0, 0)
+    assert answer.text == "ok" and answer.usage == (0, 0)
 
 
 async def test_other_request_errors_are_not_retried():
     seen = []
     with pytest.raises(Exception):
-        await events_from(client_for(httpx.Response(401, json={"error": {}}), seen=seen))
+        await answer_from(client_for(httpx.Response(401, json={"error": {}}), seen=seen))
     assert len(seen) == 1
 
 
-def test_message_mapping_normalizes_interleaved_blocks():
-    call = ToolUseBlock(2, "t1", "search_knowledge_base", {"query": "x"})
-    transcript = [
-        UserText("q"),
-        AssistantTurn([TextBlock(0, "a"), call, TextBlock(1, "b")]),
-        ToolResults(
-            [
-                ToolResult("t1", True, json_payload={"results": [{"ref": 1}]}),
-                ToolResult("t2", False, text="Error: bad"),
-            ]
-        ),
+async def test_request_for_a_tool_loop_sends_text_as_strings():
+    seen = []
+    messages = [
+        {"role": "user", "content": [{"text": "q"}]},
+        {
+            "role": "assistant",
+            "content": [
+                {"text": "a"},
+                {"toolUse": {"toolUseId": "t1", "name": "search_knowledge_base", "input": {"query": "x"}}},
+                {"text": "b"},
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {"toolResult": {"toolUseId": "t1", "status": "success", "content": [{"json": {"results": [{"ref": 1}]}}]}},
+                {"toolResult": {"toolUseId": "t2", "status": "error", "content": [{"text": "Error: bad"}]}},
+            ],
+        },
     ]
-    assert openai_messages("s", transcript)[1:] == [
+    await answer_from(client_for(sse(delta("ok"), delta(finish="stop")), seen=seen), messages)
+    assert seen[0]["messages"][1:] == [
         {"role": "user", "content": "q"},
         {
             "role": "assistant",
@@ -218,8 +236,8 @@ async def test_embeddings_batch_and_validate():
 
 async def test_tool_calls_without_an_index_are_assembled():
     call = {"id": "a", "type": "function", "function": {"name": "search_knowledge_base", "arguments": '{"query": "x"}'}}
-    events = await events_from(client_for(sse(delta(tool_calls=[call]), delta(finish="tool_calls"))))
-    assert events[0] == ToolCall(1, "a", "search_knowledge_base", {"query": "x"})
+    answer = await answer_from(client_for(sse(delta(tool_calls=[call]), delta(finish="tool_calls"))))
+    assert answer.calls == [("a", "search_knowledge_base", {"query": "x"})]
 
 
 class RecordingStream:
@@ -238,7 +256,8 @@ class RecordingStream:
         self.closed = True
 
 
-async def test_stream_is_closed_when_the_consumer_stops_early():
+@pytest.mark.parametrize("stop_at", ["messageStart", "contentBlockDelta"])
+async def test_stream_is_closed_when_the_consumer_stops_early(stop_at):
     from types import SimpleNamespace
 
     from openai.types.chat import ChatCompletionChunk
@@ -250,8 +269,9 @@ async def test_stream_is_closed_when_the_consumer_stops_early():
         return stream
 
     client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
-    events = OpenAIChat("m", client=client).stream("s", [UserText("q")], [SEARCH_TOOL], 10)
-    assert await anext(events) == TextDelta(0, "part 0 ")
+    events = OpenAIChat("m", client=client).stream(QUESTION, [SEARCH_TOOL], "s")
+    while stop_at not in await anext(events):
+        pass
     await events.aclose()
     assert stream.closed
 
@@ -280,12 +300,12 @@ async def test_index_less_tool_calls_split_on_a_new_id():
     first = {"id": "a", "type": "function", "function": {"name": "search_knowledge_base", "arguments": '{"query":'}}
     rest = {"function": {"arguments": ' "x"}'}}
     second = {"id": "b", "type": "function", "function": {"name": "search_knowledge_base", "arguments": '{"query": "y"}'}}
-    events = await events_from(
+    answer = await answer_from(
         client_for(sse(delta(tool_calls=[first]), delta(tool_calls=[rest]), delta(tool_calls=[second]), delta(finish="tool_calls")))
     )
-    assert events[:2] == [
-        ToolCall(1, "a", "search_knowledge_base", {"query": "x"}),
-        ToolCall(2, "b", "search_knowledge_base", {"query": "y"}),
+    assert answer.calls == [
+        ("a", "search_knowledge_base", {"query": "x"}),
+        ("b", "search_knowledge_base", {"query": "y"}),
     ]
 
 
@@ -307,7 +327,7 @@ async def test_truncated_classifier_reply_raises_so_the_check_fails_open():
 
 async def test_body_ending_without_a_finish_reason_is_a_stream_error():
     with pytest.raises(ModelStreamError, match="without a finish reason"):
-        await events_from(client_for(sse(delta("The key is wJalrXUtnFEMI"), done=True)))
+        await answer_from(client_for(sse(delta("The key is wJalrXUtnFEMI"), done=True)))
 
 
 async def test_interleaved_index_less_fragments_keep_their_ids():
@@ -323,20 +343,20 @@ async def test_interleaved_index_less_fragments_keep_their_ids():
         call("a", '"x"}'),
         call("b", '"y"}'),
     ]
-    events = await events_from(
+    answer = await answer_from(
         client_for(sse(*(delta(tool_calls=[f]) for f in fragments), delta(finish="tool_calls")))
     )
-    assert events[:2] == [
-        ToolCall(1, "a", "search_knowledge_base", {"query": "x"}),
-        ToolCall(2, "b", "search_knowledge_base", {"query": "y"}),
+    assert answer.calls == [
+        ("a", "search_knowledge_base", {"query": "x"}),
+        ("b", "search_knowledge_base", {"query": "y"}),
     ]
 
 
 @pytest.mark.parametrize("finish,reason", [("length", "max_tokens"), ("content_filter", "content_filtered")])
 async def test_truncation_with_tool_calls_stays_truncated(finish, reason):
     call = {"index": 0, "id": "a", "type": "function", "function": {"name": "search_knowledge_base", "arguments": '{"qu'}}
-    events = await events_from(client_for(sse(delta("key wJal"), delta(tool_calls=[call]), delta(finish=finish))))
-    assert Stop(reason) in events and Stop("tool_use") not in events
+    answer = await answer_from(client_for(sse(delta("key wJal"), delta(tool_calls=[call]), delta(finish=finish))))
+    assert answer.reason == reason
 
 
 async def test_anonymous_fragments_continue_the_most_recent_call():
@@ -355,10 +375,10 @@ async def test_anonymous_fragments_continue_the_most_recent_call():
         call("a", ': '),
         call(None, '"x"}'),
     ]
-    events = await events_from(
+    answer = await answer_from(
         client_for(sse(*(delta(tool_calls=[f]) for f in fragments), delta(finish="tool_calls")))
     )
-    assert events[:2] == [
-        ToolCall(1, "a", "search_knowledge_base", {"query": "x"}),
-        ToolCall(2, "b", "search_knowledge_base", {"query": "y"}),
+    assert answer.calls == [
+        ("a", "search_knowledge_base", {"query": "x"}),
+        ("b", "search_knowledge_base", {"query": "y"}),
     ]

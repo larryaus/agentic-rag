@@ -8,7 +8,6 @@ from kb_assistant.core.citations import extract_refs, resolve_citations
 from kb_assistant.core.history import to_history
 from kb_assistant.core.paging import decode_page_token, encode_page_token
 from kb_assistant.core.sse import encode_sse
-from kb_assistant.core.transcript import AssistantTurn, TextBlock, UserText
 from kb_assistant.core.uploads import sanitize_filename, validate_chat, validate_upload
 from kb_assistant.errors import ValidationError
 from kb_assistant.timeutil import iso_ms, message_sk
@@ -58,7 +57,7 @@ def test_history(case):
     for item in case["output"]:
         text = item["content"][0]["text"]
         expected.append(
-            UserText(text, False) if item["role"] == "user" else AssistantTurn([TextBlock(0, text)])
+            {"role": item["role"], "content": [{"text": text}]}
         )
     assert to_history(case["input"]) == expected
 

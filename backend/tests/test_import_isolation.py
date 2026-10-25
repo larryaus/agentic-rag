@@ -100,12 +100,15 @@ def test_local_only_imports_in_fresh_interpreter(tmp_path):
             sys.executable,
             "-c",
             """
-import importlib, importlib.abc, pkgutil, sys
-class BlockAws(importlib.abc.MetaPathFinder):
-    def find_spec(self, fullname, *args):
-        if fullname.split('.')[0] in {'boto3', 'botocore', 's3transfer'}:
-            raise ImportError('AWS dependency blocked: ' + fullname)
-sys.meta_path.insert(0, BlockAws())
+import importlib, pkgutil, sys
+# Strands imports boto3, so the local image ships it; it must never create an AWS client.
+import botocore.session
+clients = []
+create_client = botocore.session.Session.create_client
+def recorded(self, service_name, *args, **kwargs):
+    clients.append(service_name)
+    return create_client(self, service_name, *args, **kwargs)
+botocore.session.Session.create_client = recorded
 from kb_assistant.app import create_app
 from kb_assistant.settings import Settings
 from kb_assistant.adapters import local
@@ -116,8 +119,9 @@ app = create_app(Settings(deploy_target='local', blob_root=sys.argv[1], llm_api_
 container = app.state.container
 for name in ['blobs', 'model', 'guardrail', 'verifier', 'embedder']:
     assert getattr(container, name) is not None
-assert 'boto3' not in sys.modules and 'botocore' not in sys.modules
-print('local adapters built without AWS dependencies')
+assert not clients, clients
+assert not [name for name in sys.modules if name.startswith('kb_assistant.adapters.aws')]
+print('local adapters built without AWS clients')
 """,
             str(tmp_path),
         ],
@@ -126,4 +130,4 @@ print('local adapters built without AWS dependencies')
         text=True,
     )
     assert result.returncode == 0, result.stderr
-    assert "local adapters built without AWS dependencies" in result.stdout
+    assert "local adapters built without AWS clients" in result.stdout
