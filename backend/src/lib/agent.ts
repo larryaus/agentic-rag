@@ -175,10 +175,17 @@ export async function runAgent(opts: {
   topK: number;
   maxIterations: number;
   modelId: string;
+  guardrail: { id: string; version: string };
 }): Promise<AgentResult> {
+  // Once any block is marked as guardContent, the guardrail checks marked blocks only.
+  // Marking just the new question keeps history and retrieved text from being checked,
+  // and billed, again on every call of the tool loop.
   const messages: Message[] = [
     ...opts.history,
-    { role: 'user', content: [{ text: opts.userMessage }] },
+    {
+      role: 'user',
+      content: [{ guardContent: { text: { text: opts.userMessage } } }],
+    },
   ];
   const citationIndex = new Map<number, RawChunk>();
   let refCounter = 0;
@@ -194,6 +201,15 @@ export async function runAgent(opts: {
         system: [{ text: SYSTEM_PROMPT }],
         toolConfig: { tools: [SEARCH_TOOL] },
         inferenceConfig: { maxTokens: 2048 },
+        // Sync mode holds each chunk until it has been checked, which masking needs:
+        // async mode streams first and cannot mask. A refused turn arrives as ordinary
+        // text, the guardrail's own message, with stopReason guardrail_intervened.
+        // Tracing stays off because a trace repeats the sensitive text it matched.
+        guardrailConfig: {
+          guardrailIdentifier: opts.guardrail.id,
+          guardrailVersion: opts.guardrail.version,
+          streamProcessingMode: 'sync',
+        },
       }),
     );
     if (response.stream === undefined) {

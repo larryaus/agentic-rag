@@ -244,6 +244,7 @@ export async function chatHandler(
           topK: cfg.retrievalTopK,
           maxIterations: cfg.maxToolIterations,
           modelId: cfg.chatModelId,
+          guardrail: { id: cfg.guardrailId, version: cfg.guardrailVersion },
         });
         const updatedAt = new Date(Math.max(Date.now(), nowMs + 1)).toISOString();
         const assistantItem = makeMessageItem({

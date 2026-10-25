@@ -68,6 +68,7 @@ Ask me for a demo account and I will create one for you.
 |---|---|---|
 | Retrieval-augmented generation | Bedrock Knowledge Bases, Titan embeddings, S3 Vectors | Chunking, embedding, vector search, grounding |
 | Agentic inference | Bedrock ConverseStream with tool use | A model-driven tool loop with bounded iterations |
+| Safety | Bedrock Guardrails | Content and prompt-attack filtering, masking of sensitive data in answers |
 | Identity | Cognito user pool, resource-server scope | OAuth 2.0 code flow with PKCE, access-token-only APIs |
 | Data protection | KMS customer-managed key, private S3, scoped IAM | Encryption at rest, least privilege per Lambda |
 | State | DynamoDB single-table design | Per-user ownership checks, TTL, pagination |
@@ -127,6 +128,16 @@ Each fix is covered by an infrastructure test so it cannot quietly regress.
   requests. It rejects unauthenticated calls before any model call, and reserved
   concurrency caps how many can run at once. CORS is treated as a browser convention,
   not access control.
+- A Bedrock guardrail checks every question for harmful content and prompt attacks,
+  and refuses the turn before the model sees it. It checks every answer too, and
+  replaces card numbers, bank details, passwords, access keys and government IDs with a
+  placeholder such as `{CREDIT_DEBIT_CARD_NUMBER}` before the text is streamed or
+  stored. Contact details are left alone, because documents legitimately hold them.
+- The guardrail's limits are deliberate. It checks the new question and the answer, not
+  the retrieved document text, so instructions planted in a document are not caught on
+  the way in. A refused turn is left out of later context, so it cannot be replayed.
+  Sensitive data a user types is stored as typed, and documents are not scrubbed when
+  they are ingested.
 - S3 and DynamoDB use a customer-managed KMS key. Each Lambda has its own role with
   named resources and only the actions it needs; a test pins the exact action list.
 - The frontend bucket is private and served only through CloudFront. Model output is
@@ -258,13 +269,13 @@ Approximate, for a small demo in `ap-southeast-2`:
 |---|---|
 | Idle | about US$1–2 a month, mostly the KMS key |
 | Per question | about US$0.03–0.05 on Claude Sonnet 4.6 |
+| Guardrail checks | about US$0.001 a question on top; no idle cost |
 | Embedding a document | fractions of a cent |
 
 ## Roadmap
 
 Not built yet, with the hooks already in place:
 
-- Bedrock Guardrails and PII masking
 - Department and date metadata filtering (the Cognito attribute and document metadata
   already exist)
 - Hybrid retrieval and reranking

@@ -173,11 +173,19 @@ export async function loadRecentHistory(opts: {
  * are therefore paired by turn ID, and only complete pairs are kept, so the caller can
  * always append the next question. Rows without a turn ID cannot be paired reliably
  * and are left out of the model's context.
+ *
+ * Turns the guardrail stepped into are left out too. Only the new question is checked
+ * on each call, so a blocked question kept in history would reach the model unchecked
+ * on the next turn.
  */
 export function toConverseHistory(items: readonly MessageItem[]): Message[] {
   const answers = new Map<string, string>();
   for (const item of items) {
-    if (item.role === 'assistant' && item.turnId !== undefined) {
+    if (
+      item.role === 'assistant' &&
+      item.turnId !== undefined &&
+      item.stopReason !== 'guardrail_intervened'
+    ) {
       answers.set(item.turnId, item.content.replace(CITATION_RE, '').trim());
     }
   }

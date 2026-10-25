@@ -7,7 +7,7 @@ import { expect, it } from 'vitest';
 
 import { runAgent } from '../lib/agent';
 import { BedrockStreamError } from '../lib/errors';
-import { scripted } from './agent-fixtures';
+import { GUARDRAIL, scripted } from './agent-fixtures';
 
 const bedrock = mockClient(BedrockRuntimeClient);
 
@@ -41,6 +41,7 @@ it('surfaces a typed stream error carrying accumulated output', async () => {
     topK: 8,
     maxIterations: 6,
     modelId: 'test-model',
+    guardrail: GUARDRAIL,
   }).catch((caught: unknown) => caught);
 
   expect(error).toBeInstanceOf(BedrockStreamError);

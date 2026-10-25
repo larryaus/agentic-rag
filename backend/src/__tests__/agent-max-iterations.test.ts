@@ -7,7 +7,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 
 import { runAgent } from '../lib/agent';
 import { retrieve } from '../lib/retrieve';
-import { chunk, toolTurn } from './agent-fixtures';
+import { GUARDRAIL, chunk, toolTurn } from './agent-fixtures';
 
 vi.mock('../lib/retrieve', () => ({ retrieve: vi.fn() }));
 
@@ -35,6 +35,7 @@ it('counts model iterations and does not dispatch an unusable final tool call', 
     topK: 8,
     maxIterations,
     modelId: 'test-model',
+    guardrail: GUARDRAIL,
   });
 
   expect(bedrock.commandCalls(ConverseStreamCommand)).toHaveLength(maxIterations);

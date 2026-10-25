@@ -25,6 +25,8 @@ import { HttpUserPoolAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import type { Construct } from 'constructs';
 
+import { createChatGuardrail } from './chat-guardrail';
+
 export type KbApiStackProps = StackProps & {
   frontendOrigins: string[];
   chatModelId: string;
@@ -97,6 +99,7 @@ export class KbApiStack extends Stack {
       });
     };
 
+    const guardrail = createChatGuardrail(this);
     const chat = createFunction({
       id: 'ChatFunction',
       handler: 'chat.ts',
@@ -107,6 +110,8 @@ export class KbApiStack extends Stack {
         TABLE_NAME: props.conversationsTable.tableName,
         KNOWLEDGE_BASE_ID: props.knowledgeBaseId,
         CHAT_MODEL_ID: props.chatModelId,
+        GUARDRAIL_ID: guardrail.guardrailId,
+        GUARDRAIL_VERSION: guardrail.version,
         USER_POOL_ID: props.userPool.userPoolId,
         USER_POOL_CLIENT_ID: props.userPoolClient.userPoolClientId,
         RETRIEVAL_TOP_K: '8',
@@ -203,6 +208,12 @@ export class KbApiStack extends Stack {
           `arn:${this.partition}:bedrock:${this.region}:${this.account}:inference-profile/${props.chatModelId}`,
           `arn:${this.partition}:bedrock:*::foundation-model/${baseModelId}`,
         ],
+      }),
+    );
+    chat.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['bedrock:ApplyGuardrail'],
+        resources: [guardrail.guardrailArn],
       }),
     );
     chat.addToRolePolicy(

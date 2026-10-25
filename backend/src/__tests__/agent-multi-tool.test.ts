@@ -8,7 +8,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 
 import { runAgent } from '../lib/agent';
 import { retrieve } from '../lib/retrieve';
-import { chunk, scripted, textTurn } from './agent-fixtures';
+import { GUARDRAIL, chunk, scripted, textTurn } from './agent-fixtures';
 
 vi.mock('../lib/retrieve', () => ({ retrieve: vi.fn() }));
 
@@ -74,6 +74,7 @@ it('runs every tool block and returns all results in one user message', async ()
     topK: 8,
     maxIterations: 6,
     modelId: 'test-model',
+    guardrail: GUARDRAIL,
   });
 
   expect(retrieve).toHaveBeenCalledTimes(2);
