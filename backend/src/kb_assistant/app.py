@@ -17,7 +17,7 @@ from kb_assistant.api import chat, documents, health, local_blobs, sessions, upl
 from kb_assistant.api.spa import spa_router
 from kb_assistant.container import Container
 from kb_assistant.core.sse import js_json_dumps
-from kb_assistant.errors import AppError
+from kb_assistant.errors import AppError, error_fields
 from kb_assistant.logging import log, log_context
 from kb_assistant.settings import Settings
 
@@ -56,7 +56,7 @@ class RequestLogging:
             except Exception as exc:
                 # Handle inside Starlette's error middleware so uvicorn never receives
                 # the exception and prints a second, potentially sensitive traceback.
-                log("error", "http request failed", errorType=type(exc).__name__)
+                log("error", "http request failed", **error_fields(exc))
                 try:
                     if not response_started:
                         await LegacyJSONResponse(

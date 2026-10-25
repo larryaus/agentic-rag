@@ -28,6 +28,21 @@ class AgentStreamError(Exception):
         self.partial_result = partial_result
 
 
+def error_fields(error: BaseException) -> dict[str, str]:
+    """Log fields naming an error. An AWS error is named by its service code, since every
+    botocore error is a ClientError; its message names the action or parameter at fault."""
+    response = getattr(error, "response", None)
+    details = response.get("Error") if isinstance(response, dict) else None
+    code = details.get("Code") if isinstance(details, dict) else None
+    if not isinstance(code, str) or not code:
+        return {"errorType": type(error).__name__}
+    message = details.get("Message") if isinstance(details, dict) else None
+    fields = {"errorType": code}
+    if isinstance(message, str) and message:
+        fields["errorMessage"] = message[:500]
+    return fields
+
+
 def error_message(error: BaseException) -> str:
     name = (
         "SyntaxError"

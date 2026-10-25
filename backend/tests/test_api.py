@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from unittest.mock import AsyncMock
 
@@ -381,3 +382,21 @@ async def test_cors_only_when_configured():
         )
         assert response.status_code == 200
         assert response.headers["access-control-allow-origin"] == "https://frontend.example"
+
+
+async def test_aws_failure_is_logged_by_its_service_code(client, monkeypatch, capsys):
+    from botocore.exceptions import ClientError
+
+    from kb_assistant.api import chat
+
+    denied = ClientError(
+        {"Error": {"Code": "AccessDeniedException", "Message": "not authorized to ApplyGuardrail"}},
+        "ConverseStream",
+    )
+    monkeypatch.setattr(chat, "run_agent", AsyncMock(side_effect=denied))
+    response = await client.post("/", json={"message": "question"})
+    assert "event: error" in response.text and "ApplyGuardrail" not in response.text
+    records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    failure = next(r for r in records if r["msg"] == "chat request failed after stream commit")
+    assert failure["errorType"] == "AccessDeniedException"
+    assert failure["errorMessage"] == "not authorized to ApplyGuardrail"
