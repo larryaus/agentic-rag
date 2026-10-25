@@ -14,7 +14,7 @@ from kb_assistant.core.history import make_message_item, make_session_item, to_h
 from kb_assistant.core.sse import encode_sse
 from kb_assistant.core.text import JS_SPACES
 from kb_assistant.core.uploads import validate_chat
-from kb_assistant.errors import AgentStreamError, AppError
+from kb_assistant.errors import AgentStreamError, AppError, error_fields
 from kb_assistant.logging import log
 from kb_assistant.timeutil import iso_ms, now
 
@@ -107,7 +107,7 @@ class ChatResponse(Response):
                     except (asyncio.CancelledError, OSError, ClientDisconnect):
                         pass
                     except Exception as exc:
-                        log("error", "chat response task failed", errorType=type(exc).__name__)
+                        log("error", "chat response task failed", **error_fields(exc))
                 else:
                     # Consume a cancelled task's result without extending the hard deadline.
                     task.add_done_callback(_consume_task)
@@ -234,11 +234,11 @@ async def chat(request: Request, auth: Auth, deps: Dependencies) -> Response:
                     log(
                         "error",
                         "failed to persist failure assistant row",
-                        errorType=type(persistence_error).__name__,
+                        **error_fields(persistence_error),
                     )
                 raise
         except Exception as exc:
-            log("error", "chat request failed after stream commit", errorType=type(exc).__name__)
+            log("error", "chat request failed after stream commit", **error_fields(exc))
             emit(
                 dict(
                     type="error",
