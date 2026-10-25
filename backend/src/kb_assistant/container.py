@@ -17,7 +17,8 @@ class Container:
     """Builds each adapter on first use, choosing the deployment's implementation.
 
     Adapter modules are imported lazily, so the Lambda package never imports the local
-    dependencies and the Docker image never imports boto3.
+    dependencies and the Docker image never creates an AWS client. (Strands, which runs
+    the agent loop in both, brings boto3 into the image as a dependency.)
     """
 
     def __init__(self, settings: Settings) -> None:

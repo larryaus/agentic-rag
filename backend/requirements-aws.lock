@@ -11,16 +11,30 @@ annotated-types==0.8.0
 anyio==4.15.1
     # via
     #   -c backend/requirements-aws.lock
+    #   httpx
+    #   httpx2
+    #   mcp
+    #   sse-starlette
     #   starlette
+attrs==26.1.0
+    # via
+    #   jsonschema
+    #   referencing
 boto3==1.40.57
     # via
     #   -c backend/requirements-aws.lock
     #   kb-assistant (backend/pyproject.toml)
+    #   strands-agents
 botocore==1.40.76
     # via
     #   -c backend/requirements-aws.lock
     #   boto3
     #   s3transfer
+    #   strands-agents
+certifi==2026.10.23
+    # via
+    #   httpcore
+    #   httpx
 cffi==2.1.1
     # via
     #   -c backend/requirements-aws.lock
@@ -33,6 +47,8 @@ cryptography==50.0.2
     # via
     #   -c backend/requirements-aws.lock
     #   pyjwt
+docstring-parser==0.18.0
+    # via strands-agents
 fastapi==0.162.0
     # via
     #   -c backend/requirements-aws.lock
@@ -40,20 +56,60 @@ fastapi==0.162.0
 h11==0.16.0
     # via
     #   -c backend/requirements-aws.lock
+    #   httpcore
+    #   httpcore2
     #   uvicorn
+httpcore==1.0.9
+    # via httpx
+httpcore2==2.16.0
+    # via httpx2
+httpx==0.28.1
+    # via strands-agents
+httpx2==2.16.0
+    # via mcp
 idna==3.20
     # via
     #   -c backend/requirements-aws.lock
     #   anyio
+    #   httpx
+    #   httpx2
 jmespath==1.1.0
     # via
     #   -c backend/requirements-aws.lock
     #   boto3
     #   botocore
+jsonschema==4.26.0
+    # via
+    #   mcp
+    #   strands-agents
+jsonschema-specifications==2025.9.1
+    # via jsonschema
+mcp==2.1.1
+    # via strands-agents
+mcp-types==2.1.1
+    # via mcp
 opentelemetry-api==1.45.1
     # via
     #   -c backend/requirements-aws.lock
     #   fastapi
+    #   mcp
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-threading
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+    #   strands-agents
+opentelemetry-instrumentation==0.66b1
+    # via opentelemetry-instrumentation-threading
+opentelemetry-instrumentation-threading==0.66b1
+    # via strands-agents
+opentelemetry-sdk==1.45.1
+    # via strands-agents
+opentelemetry-semantic-conventions==0.66b1
+    # via
+    #   opentelemetry-instrumentation
+    #   opentelemetry-sdk
+packaging==26.3
+    # via opentelemetry-instrumentation
 pycparser==3.12
     # via
     #   -c backend/requirements-aws.lock
@@ -63,7 +119,10 @@ pydantic==2.14.1
     #   -c backend/requirements-aws.lock
     #   kb-assistant (backend/pyproject.toml)
     #   fastapi
+    #   mcp
+    #   mcp-types
     #   pydantic-settings
+    #   strands-agents
 pydantic-core==2.50.1
     # via
     #   -c backend/requirements-aws.lock
@@ -76,6 +135,7 @@ pyjwt==2.15.1
     # via
     #   -c backend/requirements-aws.lock
     #   kb-assistant (backend/pyproject.toml)
+    #   mcp
 python-dateutil==2.9.0.post0
     # via
     #   -c backend/requirements-aws.lock
@@ -84,10 +144,22 @@ python-dotenv==1.2.4
     # via
     #   -c backend/requirements-aws.lock
     #   pydantic-settings
+python-multipart==0.0.32
+    # via mcp
+pyyaml==6.0.3
+    # via strands-agents
+referencing==0.37.0
+    # via
+    #   jsonschema
+    #   jsonschema-specifications
 regex==2026.9.29
     # via
     #   -c backend/requirements-aws.lock
     #   kb-assistant (backend/pyproject.toml)
+rpds-py==2026.9.1
+    # via
+    #   jsonschema
+    #   referencing
 s3transfer==0.14.0
     # via
     #   -c backend/requirements-aws.lock
@@ -96,25 +168,43 @@ six==1.17.0
     # via
     #   -c backend/requirements-aws.lock
     #   python-dateutil
+sse-starlette==3.6.0
+    # via mcp
 starlette==1.10.0
     # via
     #   -c backend/requirements-aws.lock
     #   fastapi
+    #   mcp
+    #   sse-starlette
+strands-agents==1.62.0
+    # via kb-assistant (backend/pyproject.toml)
+truststore==0.10.5
+    # via
+    #   httpcore2
+    #   httpx2
 typing-extensions==4.16.0
     # via
     #   -c backend/requirements-aws.lock
     #   anyio
     #   fastapi
+    #   httpx2
+    #   mcp
+    #   mcp-types
     #   opentelemetry-api
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   pydantic
     #   pydantic-core
     #   pydantic-settings
+    #   referencing
     #   starlette
+    #   strands-agents
     #   typing-inspection
 typing-inspection==0.4.4
     # via
     #   -c backend/requirements-aws.lock
     #   fastapi
+    #   mcp
     #   pydantic
     #   pydantic-settings
 urllib3==2.8.0
@@ -125,3 +215,10 @@ uvicorn==0.54.0
     # via
     #   -c backend/requirements-aws.lock
     #   kb-assistant (backend/pyproject.toml)
+    #   mcp
+watchdog==6.0.0
+    # via strands-agents
+wrapt==2.5.1
+    # via
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-threading

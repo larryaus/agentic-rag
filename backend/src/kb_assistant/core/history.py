@@ -1,11 +1,12 @@
 from typing import Any
 
+from strands.types.content import Messages
+
 from .citations import CITATION_RE
 from .text import js_trim
-from .transcript import AssistantTurn, TextBlock, Turn, UserText
 
 
-def to_history(items: list[dict[str, Any]]) -> list[Turn]:
+def to_history(items: list[dict[str, Any]]) -> Messages:
     answers = {
         item["turnId"]: js_trim(CITATION_RE.sub("", item["content"]))
         for item in items
@@ -13,14 +14,19 @@ def to_history(items: list[dict[str, Any]]) -> list[Turn]:
         and "turnId" in item
         and item.get("stopReason") != "guardrail_intervened"
     }
-    result: list[Turn] = []
+    result: Messages = []
     for item in items:
         if item["role"] != "user" or "turnId" not in item:
             continue
         question = js_trim(item["content"])
         answer = answers.get(item["turnId"])
         if question and answer:
-            result.extend([UserText(question), AssistantTurn([TextBlock(0, answer)])])
+            result.extend(
+                [
+                    {"role": "user", "content": [{"text": question}]},
+                    {"role": "assistant", "content": [{"text": answer}]},
+                ]
+            )
     return result
 
 

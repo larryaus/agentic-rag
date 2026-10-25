@@ -22,8 +22,9 @@ Ask me for a demo account and I will create one for you.
 
 ## What it does
 
-- **Grounded answers with citations.** An agent loop on Amazon Bedrock decides when to
-  search the knowledge base, then answers from the retrieved passages. Each claim carries
+- **Grounded answers with citations.** An agent loop built on
+  [Strands Agents](https://strandsagents.com) decides when to search the knowledge base,
+  then answers from the retrieved passages. Each claim carries
   a numbered chip that downloads the source document.
 - **Streaming chat.** Answers arrive token by token over Server-Sent Events, rendered as
   Markdown.
@@ -105,7 +106,7 @@ cannot reach a deployed build.
 ```text
                     React frontend (generic OpenID Connect sign-in)
                                   │
-                  FastAPI app: routes, SSE chat, agent tool loop,
+                  FastAPI app: routes, SSE chat, Strands agent loop,
                   citations, history, upload rules, paging, contracts
                                   │
            ┌──────────────────────┴───────────────────────┐
@@ -131,9 +132,13 @@ cannot reach a deployed build.
 | Safety | model classifier for questions, pattern masking for answers | Bedrock Guardrails |
 
 The routes, agent loop, citations, history rules and API contract are shared, so a fix
-to any of them lands in both deployments. `container.py` is the only place that picks an
-adapter, and it imports adapters lazily: the Lambda package never imports the local
-dependencies, and the Docker image never imports boto3. Tests enforce both.
+to any of them lands in both deployments. The agent loop runs on Strands Agents: the
+search tool, citation numbering, the search-step limit, the context budget and answer
+masking are hooks and middleware around it, and each deployment's chat adapter is a
+Strands model provider. `container.py` is the only place that picks an adapter, and it
+imports adapters lazily: the Lambda package never imports the local dependencies, and
+the Docker image never creates an AWS client (boto3 is installed there only because
+Strands depends on it). Tests enforce both.
 
 ## AWS architecture
 
@@ -180,7 +185,7 @@ requests. Ingestion and reconciliation use direct Python Lambda handlers.
 | Area | AWS services | What it demonstrates |
 |---|---|---|
 | Retrieval-augmented generation | Bedrock Knowledge Bases, Titan embeddings, S3 Vectors | Chunking, embedding, vector search, grounding |
-| Agentic inference | Bedrock ConverseStream with tool use | A model-driven tool loop with bounded iterations |
+| Agentic inference | Strands Agents on Bedrock ConverseStream with tool use | A model-driven tool loop with bounded iterations |
 | Safety | Bedrock Guardrails | Content and prompt-attack filtering, masking of sensitive data in answers |
 | Identity | Cognito user pool, resource-server scope | OAuth 2.0 code flow with PKCE, access-token-only APIs |
 | Data protection | KMS customer-managed key, private S3, scoped IAM | Encryption at rest, least privilege per Lambda |
@@ -275,8 +280,10 @@ The local deployment's safety layer is weaker than Bedrock Guardrails, and says 
   pattern matches at most 86 characters, so the stream holds back the last 87 and never
   releases a cut through a match, so the streamed text is what masking the whole answer
   would give. (A pathologically long chain of overlapping matches is cut by force and
-  can repeat a placeholder; it never releases the raw text.) If the model stream fails,
-  the held-back tail is dropped rather than released.
+  can repeat a placeholder; it never releases the raw text.) If the answer did not
+  finish normally (the stream failed, or it hit the token limit, a content filter, the
+  search-step limit or a stop reason the server does not document), the held-back tail
+  is dropped rather than released.
 - Pattern masking has gaps. Anything the patterns do not know passes through. A labelled
   password is masked only up to its first 64 characters. A card number in the same run
   of digits as other numbers (an expiry such as `12/26` or a CVV right after it, or two

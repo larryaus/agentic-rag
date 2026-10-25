@@ -1,37 +1,10 @@
-from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from .transcript import Turn
+from strands.models import Model
 
-
-@dataclass
-class TextDelta:
-    block_index: int
-    text: str
-
-
-@dataclass
-class ToolCall:
-    block_index: int
-    id: str
-    name: str
-    input: dict[str, Any]
-    input_error: str | None = None
-
-
-@dataclass
-class Usage:
-    input_tokens: int
-    output_tokens: int
-
-
-@dataclass
-class Stop:
-    reason: str
-
-
-ModelEvent = TextDelta | ToolCall | Usage | Stop
+# Chat models are Strands model providers; the agent loop runs on Strands (core/agent.py).
+ChatModel = Model
 
 
 @dataclass
@@ -62,12 +35,6 @@ class AuthContext:
 class InputVerdict:
     allowed: bool
     message: str = ""
-
-
-class ChatModel(Protocol):
-    def stream(
-        self, system: str, transcript: list[Turn], tools: list[dict[str, Any]], max_tokens: int
-    ) -> AsyncIterator[ModelEvent]: ...
 
 
 class Retriever(Protocol):
