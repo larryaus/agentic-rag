@@ -293,7 +293,8 @@ async def test_stream_failures(failure):
     assert await anext(stream) == TextDelta(0, "partial")
     with pytest.raises(ModelStreamError):
         await anext(stream)
-    assert client.stream.closed.is_set()
+    # The worker thread closes the stream after publishing the failure, so wait for it.
+    assert await asyncio.to_thread(client.stream.closed.wait, 1)
 
 
 async def test_stream_consumer_early_close():
