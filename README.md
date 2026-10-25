@@ -106,13 +106,17 @@ cannot reach a deployed build.
 ```text
                     React frontend (generic OpenID Connect sign-in)
                                   │
-                  FastAPI app: routes, SSE chat, Strands agent loop,
-                  citations, history, upload rules, paging, contracts
+                  FastAPI app: routes, SSE chat, citations, history,
+                  upload rules, paging, contracts
+                                  │
+                  Strands Agents loop: search tool, citation numbering,
+                  search-step limit, context budget, answer filter
                                   │
            ┌──────────────────────┴───────────────────────┐
            ▼                                              ▼
     adapters/local                                  adapters/aws
-    OpenAI-compatible chat + embeddings             Bedrock ConverseStream
+    Strands model: OpenAI-compatible chat           Strands model: Bedrock ConverseStream
+    OpenAI-compatible embeddings                    Titan Text Embeddings v2
     Postgres: records + hybrid pgvector search      Bedrock Knowledge Base + S3 Vectors
     files on a volume, signed URLs                  S3, presigned URLs
     in-process ingestion worker                     EventBridge ingest + reconciler
@@ -158,11 +162,12 @@ Strands depends on it). Tests enforce both.
                                         │
                       ┌─────────────────┴─────────────────┐
                       ▼                                   ▼
-           Bedrock ConverseStream                     DynamoDB
-              agent tool loop                  private conversations,
-                      │                          document records
-           search_knowledge_base
-                      │
+             Strands Agents loop                      DynamoDB
+          ┌───────────┴───────────┐            private conversations,
+          ▼ model calls           ▼ tool calls   document records
+Bedrock ConverseStream  search_knowledge_base
++ Guardrail (sync mode)           │
+                      ┌───────────┘
                       ▼
            Bedrock Knowledge Base ── Titan Text Embeddings v2
                       │
