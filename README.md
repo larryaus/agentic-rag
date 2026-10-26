@@ -334,8 +334,9 @@ the API and ingested by the worker, so they cover the shipped extraction, chunki
 embedding and hybrid search.
 
 - **Retrieval, on every pull request.** The Postgres tests score where each question's
-  evidence ranks in the retrieved chunks (hit@1, recall@k, mean reciprocal rank) and
-  fail if any metric falls below `evals/baselines/retrieval-pipeline.json`. Embeddings
+  evidence ranks among the retrieved chunks of its expected documents (hit@1, recall@k,
+  mean reciprocal rank) and fail if any metric falls below
+  `evals/baselines/retrieval-pipeline.json`. Embeddings
   come from the fake model server, so the scores are deterministic and the gate catches
   pipeline regressions (dropping keyword search, for example, fails it), not the quality
   of a real embedding model. After an intended change, rerun with

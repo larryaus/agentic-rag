@@ -3,7 +3,8 @@
 A record's evidence is a set of verbatim passages from its expected sources. Retrieval is
 scored on where they appear in the ranked chunks: whether the top chunk holds any of
 them, what share of them the top k chunks hold, and the reciprocal rank of the first
-chunk that holds one. Questions the documents do not cover have no evidence and are not
+chunk that holds one. Only chunks of the expected sources count, since another document
+can repeat a passage. Questions the documents do not cover have no evidence and are not
 scored here; the answer evaluation checks that they are refused.
 """
 
@@ -43,7 +44,11 @@ def _normalize(text: str) -> str:
 
 def score_record(record: GoldenRecord, ranked: Sequence[Retrieved], ks: Iterable[int] = KS) -> RecordScore:
     evidence = [_normalize(passage) for passage in record.evidence]
-    chunks = [_normalize(chunk.text) for chunk in ranked]
+    # A chunk of any other document holds nothing, but keeps its place in the ranking.
+    chunks = [
+        _normalize(chunk.text) if chunk.title in record.expected_sources else ""
+        for chunk in ranked
+    ]
     first_rank = next(
         (rank for rank, chunk in enumerate(chunks, 1) if any(p in chunk for p in evidence)),
         None,

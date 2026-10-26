@@ -40,6 +40,16 @@ def test_evidence_matches_across_rewrapped_lines_but_not_across_chunks() -> None
     assert split.first_rank is None and split.recall[3] == 0.0
 
 
+def test_evidence_counts_only_in_chunks_from_expected_sources() -> None:
+    # Two documents can share a passage; a chunk from the wrong one is not a hit.
+    score = score_record(
+        record("r", ["60 RPM"], sources=["faq.md"]),
+        [Retrieved("runbook.md", "limit is 60 RPM"), Retrieved("faq.md", "Pro: 60 RPM")],
+    )
+    assert score.first_rank == 2
+    assert score.recall == {1: 0.0, 3: 1.0, 5: 1.0}
+
+
 def test_summary_skips_unanswerable_records_and_averages() -> None:
     records = [record("hit", ["x"]), record("miss", ["y"]), record("oos", [], sources=[])]
     ranked = {"hit": [chunk("x")], "miss": [chunk("z"), chunk("y")], "oos": [chunk("x")]}

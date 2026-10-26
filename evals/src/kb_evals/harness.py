@@ -36,6 +36,11 @@ class EvalVerifier:
         return AuthContext("eval", "eval")
 
 
+def database_url(server_url: str, name: str) -> str:
+    """The server's URL naming another database, with its user, host and parameters kept."""
+    return urlsplit(server_url)._replace(path=f"/{name}").geturl()
+
+
 @asynccontextmanager
 async def temporary_database(server_url: str) -> AsyncIterator[str]:
     """A fresh database on the server, dropped afterwards, so earlier runs cannot leak in."""
@@ -46,7 +51,7 @@ async def temporary_database(server_url: str) -> AsyncIterator[str]:
     await admin.execute(f'CREATE DATABASE "{name}"')
     await admin.close()
     try:
-        yield server_url.rsplit("/", 1)[0] + "/" + name
+        yield database_url(server_url, name)
     finally:
         admin = await asyncpg.connect(server_url)
         await admin.execute(f'DROP DATABASE "{name}" WITH (FORCE)')
