@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kb-evals"
 version = "0.1.0"
-description = "Golden-dataset schema scaffold for the enterprise knowledge base assistant."
+description = "Golden dataset and evaluation harness for the enterprise knowledge base assistant."
 requires-python = ">=3.9"
 dependencies = []
 
