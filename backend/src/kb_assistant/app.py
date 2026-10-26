@@ -109,6 +109,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.container = Container(settings)
     app.add_middleware(RequestLogging, trust_lambda_context=settings.deploy_target == "aws")
+    # Only the chat function runs the agent loop, whose spans go to X-Ray.
+    if (
+        settings.deploy_target == "aws"
+        and "chat" in settings.route_names
+        and settings.aws_xray_daemon_address
+    ):
+        from kb_assistant.adapters.aws.xray import TraceContext, configure_tracing
+
+        configure_tracing(settings.aws_xray_daemon_address)
+        app.add_middleware(TraceContext)
     if settings.cors_allow_origins:
         app.add_middleware(
             CORSMiddleware,

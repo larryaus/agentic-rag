@@ -1,4 +1,5 @@
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from typing import Any
@@ -16,6 +17,7 @@ from kb_assistant.core.text import JS_SPACES
 from kb_assistant.core.uploads import validate_chat
 from kb_assistant.errors import AgentStreamError, AppError, error_fields
 from kb_assistant.logging import log
+from kb_assistant.metrics import TurnMeter, embedded_metrics
 from kb_assistant.timeutil import iso_ms, now
 
 from .deps import Auth, Dependencies
@@ -123,6 +125,7 @@ def _consume_task(task: asyncio.Task[None]) -> None:
 @router.post("/")
 @router.post("/v1/chat")
 async def chat(request: Request, auth: Auth, deps: Dependencies) -> Response:
+    meter = TurnMeter(started=time.monotonic())
     body = validate_chat(await request.body())
     is_new = "sessionId" not in body
     session_id = body.get("sessionId", str(uuid4()))
@@ -148,6 +151,9 @@ async def chat(request: Request, auth: Auth, deps: Dependencies) -> Response:
         )
 
     async def turn(emit: Callable[[dict[str, Any]], None]) -> None:
+        emit = meter.watch(emit)
+        stop_reason = "error"
+        usage = {"inputTokens": 0, "outputTokens": 0}
         model_deadline = (
             asyncio.get_running_loop().time()
             + deps.settings.chat_turn_deadline_seconds
@@ -208,6 +214,7 @@ async def chat(request: Request, auth: Auth, deps: Dependencies) -> Response:
                         max_iterations=deps.settings.max_tool_iterations,
                         max_context_chars=deps.settings.llm_max_context_chars,
                     )
+                usage = result["usage"]
                 await persist(result, turn_id)
                 emit(
                     dict(
@@ -217,7 +224,10 @@ async def chat(request: Request, auth: Auth, deps: Dependencies) -> Response:
                         usage=result["usage"],
                     )
                 )
+                stop_reason = result["stopReason"]
             except Exception as exc:
+                if isinstance(exc, AgentStreamError):
+                    usage = exc.partial_result["usage"]
                 result = (
                     exc.partial_result
                     if isinstance(exc, AgentStreamError)
@@ -247,5 +257,14 @@ async def chat(request: Request, auth: Auth, deps: Dependencies) -> Response:
                     else GENERIC_FAILURE,
                 )
             )
+        finally:
+            # A failed turn still returns 200 with an error event, so only this record,
+            # not the Lambda error count, shows the failure.
+            record = meter.record(
+                model=deps.settings.chat_model, stop_reason=stop_reason, usage=usage
+            )
+            if deps.settings.deploy_target == "aws":
+                record.update(embedded_metrics(record, deps.settings.metrics_namespace))
+            log("info", "chat turn completed", **record)
 
     return ChatResponse(turn, deps.settings.chat_turn_deadline_seconds)

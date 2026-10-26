@@ -134,6 +134,7 @@ cannot reach a deployed build.
 | Sign-in | Keycloak | Cognito |
 | Ingestion | in-process worker with leases | per-document ingestion + reconciler |
 | Safety | model classifier for questions, pattern masking for answers | Bedrock Guardrails |
+| Observability | a metrics record per chat turn in the log | the same record as CloudWatch metrics, a dashboard and alarms; agent traces in X-Ray |
 
 The routes, agent loop, citations, history rules and API contract are shared, so a fix
 to any of them lands in both deployments. The agent loop runs on Strands Agents: the
@@ -195,7 +196,7 @@ requests. Ingestion and reconciliation use direct Python Lambda handlers.
 | Identity | Cognito user pool, resource-server scope | OAuth 2.0 code flow with PKCE, access-token-only APIs |
 | Data protection | KMS customer-managed key, private S3, scoped IAM | Encryption at rest, least privilege per Lambda |
 | State | DynamoDB single-table design | Per-user ownership checks, TTL, pagination |
-| Operations | CloudWatch Logs and alarms, X-Ray, AWS Budgets | Tracing, error alarms, a spend alert |
+| Operations | CloudWatch Logs, metrics, dashboard and alarms, X-Ray, AWS Budgets | Per-turn metrics, agent tracing, error and failed-turn alarms, a spend alert |
 | Delivery | AWS CDK v2 (six stacks), CloudFront, GitHub Actions | Infrastructure as code, CI and approved deploys with keyless access through OIDC |
 
 ## Design decisions
@@ -364,6 +365,43 @@ Each run uses a fresh database on that server and drops it afterwards. The sampl
 small (eight chunks), so these numbers move in large steps; a larger corpus would make
 them more sensitive.
 
+## Observability
+
+Every chat turn logs one `chat turn completed` record in both deployments. It holds the
+model, the stop reason, the time to the first text and to the end of the turn, the input
+and output tokens, and the number of searches. Failed turns are recorded too, with the
+tokens they used before failing. Locally the records are in the app's log
+(`docker compose logs app`).
+
+On AWS the record also carries CloudWatch Embedded Metric Format directives, so the chat
+function's log stream publishes it as metrics in the `KbAssistant` namespace, with no API
+call or extra permission:
+
+| Metric | Dimensions | Unit |
+|---|---|---|
+| `turnMs`, `firstTextMs` | `model` | milliseconds |
+| `inputTokens`, `outputTokens`, `toolCalls` | `model` | count |
+| `turns` | `model`, `stopReason` | count |
+
+The `KbAssistant` dashboard (the `DashboardUrl` stack output) charts:
+- turns by stop reason
+- answer latency: first text and whole turn, p50 and p90
+- tokens and searches per turn
+- the chat and ingestion functions' invocations, errors and throttles
+
+`ChatFailedTurnsAlarm` fires on any turn that ends in an error. The existing error alarm
+can't catch these: a failed turn still returns HTTP 200 and reports the failure as an
+error event, so the chat function records no Lambda error. That is how every turn failed
+during the Bedrock account suspension.
+
+The chat function's X-Ray traces include the agent loop. Strands records a span for the
+agent run, each loop cycle, each model call and each search. For requests X-Ray samples,
+the function sends these spans to Lambda's X-Ray daemon as subsegments of its own
+segment. Each subsegment carries timing, error status, the model, token counts and the
+search tool's status. Prompts, answers, search queries and results never leave the
+function: Strands records them on its spans, but the exporter sends only allowlisted
+attributes. FastAPI's own spans appear too, showing how long the access-token check took.
+
 ## Continuous integration and deployment
 
 GitHub Actions (`.github/workflows/ci.yml`) runs `npm run verify` and
@@ -484,6 +522,7 @@ Approximate, for a small demo in `ap-southeast-2`:
 | Per question | about US$0.03–0.05 on Claude Sonnet 4.6 |
 | Guardrail checks | about US$0.001 a question on top; no idle cost |
 | Embedding a document | fractions of a cent |
+| Monitoring | usually free: about 6–10 custom metrics, 6 alarms and one dashboard fit CloudWatch's free tier, and X-Ray's covers 100,000 traces a month |
 
 ## Roadmap
 
@@ -494,5 +533,5 @@ Not built yet, with the hooks already in place:
 - Hybrid retrieval and reranking on AWS (the local deployment already fuses vector and
   keyword search)
 - A human-approval step for sensitive actions
-- Token, latency and cost dashboards
+- Model spend on the dashboard (it charts tokens; AWS Budgets tracks actual spend)
 - WAF and a custom domain
