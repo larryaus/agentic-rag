@@ -51,8 +51,16 @@ def validate_dataset(payload: Any) -> list[GoldenRecord]:
                     f"record {index}.expected_sources",
                     non_empty=False,
                 ),
+                evidence=_require_string_list(
+                    raw.get("evidence", []), f"record {index}.evidence", non_empty=False
+                ),
             )
         )
+        record = records[-1]
+        if record.answerable and not record.evidence:
+            raise ValueError(f"record {index}.evidence is required when sources are expected")
+        if not record.answerable and record.evidence:
+            raise ValueError(f"record {index}.evidence must be empty when no sources are expected")
     return records
 
 

@@ -6,7 +6,86 @@
       "Annual leave must be requested through OA 3 working days in advance.",
       "Up to 5 days of unused annual leave can be carried over to the following year."
     ],
-    "expected_sources": ["company_handbook.md"]
+    "expected_sources": [
+      "company_handbook.md"
+    ],
+    "evidence": [
+      "through OA 3 working days in advance",
+      "Up to 5 days of unused annual leave"
+    ]
+  },
+  {
+    "id": "handbook-annual-entitlement",
+    "question": "How many days of paid annual leave do employees get?",
+    "expected_facts": [
+      "After 1 year of service, employees receive 10 days of paid annual leave per year.",
+      "After 5 years of service, annual leave increases to 15 days."
+    ],
+    "expected_sources": [
+      "company_handbook.md"
+    ],
+    "evidence": [
+      "10 days of paid annual leave",
+      "after 5 years this increases to 15 days"
+    ]
+  },
+  {
+    "id": "handbook-sick-leave",
+    "question": "How is sick leave paid, and what paperwork does it need?",
+    "expected_facts": [
+      "Sick leave is paid at 80% of base salary.",
+      "The request needs the hospital's diagnosis, and absences longer than 3 days also need a doctor's note recommending rest."
+    ],
+    "expected_sources": [
+      "company_handbook.md"
+    ],
+    "evidence": [
+      "80% of base salary",
+      "a doctor's note recommending rest"
+    ]
+  },
+  {
+    "id": "handbook-personal-leave",
+    "question": "Is personal leave paid, and how long can it last?",
+    "expected_facts": [
+      "Personal leave is unpaid.",
+      "A single period may not exceed 5 consecutive days, and the yearly total may not exceed 15 days."
+    ],
+    "expected_sources": [
+      "company_handbook.md"
+    ],
+    "evidence": [
+      "personal leave is unpaid",
+      "may not exceed 5 consecutive days"
+    ]
+  },
+  {
+    "id": "handbook-remote-work",
+    "question": "How many days a month can I work remotely, and how do I request it?",
+    "expected_facts": [
+      "Remote work is limited to 5 days per month.",
+      "It must be requested in the OA system one working day in advance."
+    ],
+    "expected_sources": [
+      "company_handbook.md"
+    ],
+    "evidence": [
+      "Remote work is limited to 5 days per month",
+      "requested in the OA system one working day in advance"
+    ]
+  },
+  {
+    "id": "handbook-core-hours",
+    "question": "What are the core hours when everyone must be available?",
+    "expected_facts": [
+      "Core hours are 10:30 to 16:30."
+    ],
+    "expected_sources": [
+      "company_handbook.md"
+    ],
+    "evidence": [
+      "Core hours are 10:30 - 16:30"
+    ]
   },
   {
     "id": "handbook-expenses",
@@ -15,7 +94,41 @@
       "The travel per diem is CNY 300 per day.",
       "Expense claims must be submitted within 30 days of the expense being incurred."
     ],
-    "expected_sources": ["company_handbook.md"]
+    "expected_sources": [
+      "company_handbook.md"
+    ],
+    "evidence": [
+      "CNY 300 per day",
+      "within 30 days of the expense being incurred"
+    ]
+  },
+  {
+    "id": "handbook-promotion",
+    "question": "When are promotion reviews held, and who can apply for a fast-track review?",
+    "expected_facts": [
+      "Promotion reviews are held twice a year, in April and October.",
+      "Two consecutive S ratings make an employee eligible for a fast-track promotion review."
+    ],
+    "expected_sources": [
+      "company_handbook.md"
+    ],
+    "evidence": [
+      "twice a year, in April and October",
+      "Two consecutive S ratings"
+    ]
+  },
+  {
+    "id": "handbook-confidentiality",
+    "question": "How long does the confidentiality duty last after someone leaves the company?",
+    "expected_facts": [
+      "The confidentiality duty remains in force for two years after leaving the company."
+    ],
+    "expected_sources": [
+      "company_handbook.md"
+    ],
+    "evidence": [
+      "two years after leaving the company"
+    ]
   },
   {
     "id": "faq-pro-plan",
@@ -25,7 +138,94 @@
       "The Pro plan allows up to 25 MB per file.",
       "The Pro API limits are 60 RPM and 10,000 tokens per minute."
     ],
-    "expected_sources": ["product_faq.md"]
+    "expected_sources": [
+      "product_faq.md"
+    ],
+    "evidence": [
+      "CNY 299 per seat per month",
+      "25 MB per file",
+      "60 RPM and 10,000 tokens per minute"
+    ]
+  },
+  {
+    "id": "faq-personal-email",
+    "question": "Can I sign up with a Gmail address?",
+    "expected_facts": [
+      "Personal email addresses such as Gmail or QQ Mail are not currently accepted for sign-up."
+    ],
+    "expected_sources": [
+      "product_faq.md"
+    ],
+    "evidence": [
+      "Personal email addresses (such as Gmail or QQ Mail) are not currently accepted"
+    ]
+  },
+  {
+    "id": "faq-invoice",
+    "question": "How do I get an invoice, and how long do I have to ask for one?",
+    "expected_facts": [
+      "Submit an invoice request on the Billing page within 7 working days of completing the order."
+    ],
+    "expected_sources": [
+      "product_faq.md"
+    ],
+    "evidence": [
+      "within 7 working days of completing the order"
+    ]
+  },
+  {
+    "id": "faq-downgrade",
+    "question": "When does a plan downgrade take effect?",
+    "expected_facts": [
+      "A downgrade takes effect at the start of the next billing period."
+    ],
+    "expected_sources": [
+      "product_faq.md"
+    ],
+    "evidence": [
+      "A downgrade takes effect at the start of the next billing period"
+    ]
+  },
+  {
+    "id": "faq-model-training",
+    "question": "Will the documents I upload be used to train models?",
+    "expected_facts": [
+      "No. User data is used only to provide the service to that user."
+    ],
+    "expected_sources": [
+      "product_faq.md"
+    ],
+    "evidence": [
+      "All user data is used only to provide the service to that user"
+    ]
+  },
+  {
+    "id": "faq-data-region",
+    "question": "Where is customer data stored by default?",
+    "expected_facts": [
+      "By default, data is stored in the Alibaba Cloud East China 1 (Hangzhou) region."
+    ],
+    "expected_sources": [
+      "product_faq.md"
+    ],
+    "evidence": [
+      "East China 1 (Hangzhou)"
+    ]
+  },
+  {
+    "id": "faq-support-hours",
+    "question": "What are the customer support hours?",
+    "expected_facts": [
+      "Support is available on working days from 09:00 to 21:00 and closed on public holidays.",
+      "Enterprise customers have dedicated 24/7 support."
+    ],
+    "expected_sources": [
+      "product_faq.md"
+    ],
+    "evidence": [
+      "Working days from 09:00 to 21:00",
+      "dedicated 24/7 support"
+    ]
   },
   {
     "id": "support-p0",
@@ -35,7 +235,55 @@
       "Escalate to the on-call engineer within 15 minutes.",
       "Give the first status update within 30 minutes."
     ],
-    "expected_sources": ["support_runbook.md"]
+    "expected_sources": [
+      "support_runbook.md"
+    ],
+    "evidence": [
+      "acknowledge within 5 minutes",
+      "escalate to the on-call engineer within 15 minutes",
+      "give the first status update within 30 minutes"
+    ]
+  },
+  {
+    "id": "support-p1",
+    "question": "What are the response times for a P1 ticket?",
+    "expected_facts": [
+      "A P1 ticket must be acknowledged within 30 minutes.",
+      "A resolution plan or clear next step is due within 4 hours."
+    ],
+    "expected_sources": [
+      "support_runbook.md"
+    ],
+    "evidence": [
+      "acknowledge within 30 minutes",
+      "a clear next step within 4 hours"
+    ]
+  },
+  {
+    "id": "support-security-escalation",
+    "question": "Who should an unauthorized access issue be escalated to?",
+    "expected_facts": [
+      "Issues involving security, privacy or unauthorized access are escalated immediately to the security lead."
+    ],
+    "expected_sources": [
+      "support_runbook.md"
+    ],
+    "evidence": [
+      "escalated immediately to the security lead"
+    ]
+  },
+  {
+    "id": "support-escalation-contents",
+    "question": "What information must an escalation include?",
+    "expected_facts": [
+      "An escalation must include the customer name, a summary of the issue, the scope of impact, when it first occurred, the actions already taken, and the support being requested."
+    ],
+    "expected_sources": [
+      "support_runbook.md"
+    ],
+    "evidence": [
+      "An escalation must include: the customer name"
+    ]
   },
   {
     "id": "support-close",
@@ -43,6 +291,43 @@
     "expected_facts": [
       "A ticket can be closed after 3 consecutive working days without further information from the customer."
     ],
-    "expected_sources": ["support_runbook.md"]
+    "expected_sources": [
+      "support_runbook.md"
+    ],
+    "evidence": [
+      "3 consecutive working days"
+    ]
+  },
+  {
+    "id": "cross-deletion-grace",
+    "question": "How long is deleted data kept before it can no longer be restored?",
+    "expected_facts": [
+      "Deleted accounts and documents enter a 30-day grace period during which they can be restored."
+    ],
+    "expected_sources": [
+      "product_faq.md",
+      "support_runbook.md"
+    ],
+    "evidence": [
+      "30-day grace period"
+    ]
+  },
+  {
+    "id": "oos-parental-leave",
+    "question": "What is the company's parental leave policy?",
+    "expected_facts": [
+      "The assistant says the documents do not cover parental leave."
+    ],
+    "expected_sources": [],
+    "evidence": []
+  },
+  {
+    "id": "oos-stock-options",
+    "question": "How many stock options do new engineers receive?",
+    "expected_facts": [
+      "The assistant says the documents do not cover stock options."
+    ],
+    "expected_sources": [],
+    "evidence": []
   }
 ]

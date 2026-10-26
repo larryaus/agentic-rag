@@ -1,0 +1,11 @@
+{
+  "embeddings": "fake hashed bag-of-words (backend/tests/fake_llm_server.py)",
+  "tolerance": 0.0,
+  "metrics": {
+    "hit@1": 0.5909,
+    "mrr": 0.7152,
+    "recall@1": 0.5606,
+    "recall@3": 0.7879,
+    "recall@5": 1.0
+  }
+}

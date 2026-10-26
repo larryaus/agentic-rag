@@ -3,6 +3,8 @@
 Chat: the first call of a turn asks to search with the user's question; once a search
 result is in the transcript it answers from the first result and cites it. Embeddings:
 hashed bag-of-words vectors, so passages sharing words with a query rank near it.
+Non-streaming calls answer the guardrail classifier, or the evaluation judge
+(kb_evals.answers), which here supports a fact when every number in it is in the answer.
 
     uvicorn fake_llm_server:app --port 8080
 """
@@ -59,14 +61,23 @@ def answer_for(messages: list[dict[str, Any]]) -> tuple[list[str], str]:
     return [json.dumps({"query": question})], "tool_calls"
 
 
+def judge(prompt: str) -> list[bool]:
+    answer, facts = prompt.split("\n\nAnswer:\n", 1)[1].split("\n\nFacts:\n", 1)
+    facts = re.sub(r"(?m)^\d+\. ", "", facts)
+    numbers = [re.findall(r"\d+(?:[.,:]\d+)*", line) for line in facts.splitlines()]
+    return [bool(found) and all(number in answer for number in found) for found in numbers]
+
+
 @app.post("/v1/chat/completions")
 async def completions(request: Request) -> Any:
     body = await request.json()
     app.state.requests.append(body)
     messages = body["messages"]
     if not body.get("stream"):
-        question = messages[-1]["content"].lower()
-        verdict = {"allowed": REFUSE not in question}
+        if messages[0]["content"].startswith("You grade answers"):
+            verdict: dict[str, Any] = {"supported": judge(messages[-1]["content"])}
+        else:
+            verdict = {"allowed": REFUSE not in messages[-1]["content"].lower()}
         return JSONResponse(
             {
                 "id": "chatcmpl-fake",

@@ -322,6 +322,47 @@ shared runtime packages in development, CI, and the Lambda asset. The artifact g
 also constructs every AWS adapter, checks fail-closed JWT verification, and exercises
 incremental SSE and assistant persistence with fake adapters outside the shipped asset.
 
+## Evaluation
+
+`evals/datasets/golden.json` holds 24 questions about the sample documents: their
+expected facts, the documents that answer them, and verbatim evidence passages, plus
+questions the documents do not cover. A test fails if editing a sample document
+invalidates any evidence.
+
+Two evaluations run against the real local deployment: the samples are uploaded through
+the API and ingested by the worker, so they cover the shipped extraction, chunking,
+embedding and hybrid search.
+
+- **Retrieval, on every pull request.** The Postgres tests score where each question's
+  evidence ranks in the retrieved chunks (hit@1, recall@k, mean reciprocal rank) and
+  fail if any metric falls below `evals/baselines/retrieval-pipeline.json`. Embeddings
+  come from the fake model server, so the scores are deterministic and the gate catches
+  pipeline regressions (dropping keyword search, for example, fails it), not the quality
+  of a real embedding model. After an intended change, rerun with
+  `UPDATE_EVAL_BASELINE=1` and commit the new baseline.
+- **Retrieval and answers with real models, weekly and on demand.** The `Evals`
+  workflow repeats the retrieval scoring with a real embedding model, then asks every
+  question and checks each answer: whether it cites an expected document, whether a
+  model judge finds each expected fact, and whether uncovered questions are declined
+  without citations. It runs only when the `EVAL_LLM_API_KEY` secret is set; the
+  `EVAL_LLM_BASE_URL`, `EVAL_LLM_MODEL`, `EVAL_EMBEDDING_MODEL`,
+  `EVAL_EMBEDDING_DIMENSION` and `EVAL_JUDGE_MODEL` variables point it at any
+  OpenAI-compatible endpoint. Reports go to the run summary; there is no answer
+  baseline yet, so it reports rather than fails.
+
+To run them yourself against a pgvector server, export the model settings the app reads
+(`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`;
+`JUDGE_MODEL` optionally picks a different judge), then:
+
+```bash
+.venv/bin/python -m kb_evals retrieval --database-url postgresql://postgres:postgres@localhost:5433/postgres
+.venv/bin/python -m kb_evals answers --database-url postgresql://postgres:postgres@localhost:5433/postgres
+```
+
+Each run uses a fresh database on that server and drops it afterwards. The sample set is
+small (eight chunks), so these numbers move in large steps; a larger corpus would make
+them more sensitive.
+
 ## Continuous integration and deployment
 
 GitHub Actions (`.github/workflows/ci.yml`) runs `npm run verify` and
@@ -363,7 +404,7 @@ frontend/  React 19 + Vite single-page application
 infra/     AWS CDK v2 stacks: frontend hosting, storage, knowledge base, auth, API, budget
 shared/    Typed API/SSE contracts and JSON compatibility fixtures
 docker/    The local deployment's image and Keycloak realm
-evals/     Python golden-dataset schema for retrieval evaluation
+evals/     Golden dataset, retrieval and answer scoring, and the evaluation harness
 samples/   Three sample documents: an employee handbook, a product FAQ, a support runbook
 tools/     Frontend mock/publish scripts, contract fixture generator and ARM64 artifact checks
 ```
@@ -453,5 +494,4 @@ Not built yet, with the hooks already in place:
   keyword search)
 - A human-approval step for sensitive actions
 - Token, latency and cost dashboards
-- A regression runner over the golden dataset in `evals/`
 - WAF and a custom domain

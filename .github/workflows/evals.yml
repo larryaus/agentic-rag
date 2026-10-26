@@ -1,0 +1,67 @@
+name: Evals
+
+# Runs the golden dataset against real models: retrieval with a real embedding model, and
+# full answers scored by a model judge. CI's retrieval gate uses fake embeddings and runs
+# on every pull request; this measures quality, so it runs weekly and on demand, and only
+# where a model key is configured.
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  configured:
+    name: Check for a model key
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          KEY: ${{ secrets.EVAL_LLM_API_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Set the EVAL_LLM_API_KEY secret to run the model evaluations."
+          fi
+
+  models:
+    name: Retrieval and answers with real models
+    needs: configured
+    if: needs.configured.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    # Any OpenAI-compatible endpoint; the defaults match .env.example.
+    env:
+      DATABASE: postgresql://postgres:postgres@localhost:5432/postgres
+      LLM_API_KEY: ${{ secrets.EVAL_LLM_API_KEY }}
+      LLM_BASE_URL: ${{ vars.EVAL_LLM_BASE_URL || 'https://api.openai.com/v1' }}
+      LLM_MODEL: ${{ vars.EVAL_LLM_MODEL || 'gpt-4.1-mini' }}
+      EMBEDDING_MODEL: ${{ vars.EVAL_EMBEDDING_MODEL || 'text-embedding-3-small' }}
+      EMBEDDING_DIMENSION: ${{ vars.EVAL_EMBEDDING_DIMENSION || '1536' }}
+      JUDGE_MODEL: ${{ vars.EVAL_JUDGE_MODEL }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install the backend and the evaluations
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -c backend/requirements-aws.lock -c backend/requirements-local.lock -e './backend[local]' -e './evals'
+      # Reports go to this run's summary.
+      - run: .venv/bin/python -m kb_evals retrieval --database-url "$DATABASE"
+      - run: .venv/bin/python -m kb_evals answers --database-url "$DATABASE"
