@@ -25,6 +25,10 @@ import type { Construct } from 'constructs';
 import { createChatGuardrail } from './chat-guardrail';
 import { LAMBDA_ADAPTER_LAYER_VERSION, pythonBackendCode } from './python-backend';
 
+// Each chat turn's log record publishes its metrics here, through CloudWatch Embedded
+// Metric Format (backend/src/kb_assistant/metrics.py).
+export const METRICS_NAMESPACE = 'KbAssistant';
+
 export type KbApiStackProps = StackProps & {
   frontendOrigins: string[];
   chatModelId: string;
@@ -121,6 +125,7 @@ export class KbApiStack extends Stack {
         MAX_TOOL_ITERATIONS: '6',
         MAX_HISTORY_MESSAGES: '20',
         SESSION_TTL_DAYS: '90',
+        METRICS_NAMESPACE,
       },
     });
     const ingest = createFunction({
@@ -487,7 +492,105 @@ export class KbApiStack extends Stack {
     alarm('ChatThrottlesAlarm', chat.metricThrottles(metricOptions), 1);
     alarm('ChatInvocationsAlarm', chat.metricInvocations(metricOptions), 500);
 
+    const turnMetric = (
+      metricName: string,
+      statistic: string,
+      label?: string,
+    ): cloudwatch.Metric =>
+      new cloudwatch.Metric({
+        namespace: METRICS_NAMESPACE,
+        metricName,
+        dimensionsMap: { model: props.chatModelId },
+        statistic,
+        ...(label === undefined ? {} : { label }),
+        period: Duration.minutes(5),
+      });
+    // A failed turn still returns 200 with an error event, so the function's error count
+    // never sees it. The turn's own record does.
+    alarm(
+      'ChatFailedTurnsAlarm',
+      turnMetric('turns', 'Sum').with({
+        dimensionsMap: { model: props.chatModelId, stopReason: 'error' },
+      }),
+      1,
+    );
+
+    // CDK's widget classes declare `warnings` as possibly undefined, which IWidget's
+    // optional property rejects under exactOptionalPropertyTypes.
+    const graph = (graphProps: cloudwatch.GraphWidgetProps): cloudwatch.IWidget =>
+      new cloudwatch.GraphWidget(graphProps) as cloudwatch.IWidget;
+    const dashboard = new cloudwatch.Dashboard(this, 'Dashboard', {
+      dashboardName: 'KbAssistant',
+      defaultInterval: Duration.days(1),
+    });
+    dashboard.addWidgets(
+      graph({
+        title: 'Chat turns by stop reason',
+        width: 12,
+        stacked: true,
+        left: [
+          new cloudwatch.MathExpression({
+            // A search finds every stop reason, including ones no one listed here.
+            expression: `SEARCH('{${METRICS_NAMESPACE},model,stopReason} MetricName="turns" model="${props.chatModelId}"', 'Sum', 300)`,
+            usingMetrics: {},
+            label: '',
+            period: Duration.minutes(5),
+          }),
+        ],
+      }),
+      graph({
+        title: 'Answer latency (ms)',
+        width: 12,
+        left: [
+          turnMetric('firstTextMs', 'p50', 'First text p50'),
+          turnMetric('firstTextMs', 'p90', 'First text p90'),
+          turnMetric('turnMs', 'p50', 'Whole turn p50'),
+          turnMetric('turnMs', 'p90', 'Whole turn p90'),
+        ],
+      }),
+    );
+    dashboard.addWidgets(
+      graph({
+        title: 'Model tokens',
+        width: 6,
+        left: [
+          turnMetric('inputTokens', 'Sum', 'Input'),
+          turnMetric('outputTokens', 'Sum', 'Output'),
+        ],
+      }),
+      graph({
+        title: 'Searches per turn',
+        width: 6,
+        left: [
+          turnMetric('toolCalls', 'Average', 'Average'),
+          turnMetric('toolCalls', 'Maximum', 'Most'),
+        ],
+      }),
+      graph({
+        title: 'Chat function',
+        width: 6,
+        left: [
+          chat.metricInvocations({ ...metricOptions, label: 'Invocations' }),
+          chat.metricErrors({ ...metricOptions, label: 'Errors' }),
+          chat.metricThrottles({ ...metricOptions, label: 'Throttles' }),
+        ],
+        right: [chat.metricDuration({ period: Duration.minutes(5), statistic: 'p90', label: 'Duration p90 (ms)' })],
+      }),
+      graph({
+        title: 'Document ingestion',
+        width: 6,
+        left: [
+          ingest.metricInvocations({ ...metricOptions, label: 'Ingest invocations' }),
+          ingest.metricErrors({ ...metricOptions, label: 'Ingest errors' }),
+          reconciler.metricErrors({ ...metricOptions, label: 'Reconciler errors' }),
+        ],
+      }),
+    );
+
     new CfnOutput(this, 'HttpApiUrl', { value: api.apiEndpoint });
     new CfnOutput(this, 'ChatFunctionUrl', { value: chatUrl.url });
+    new CfnOutput(this, 'DashboardUrl', {
+      value: `https://console.aws.amazon.com/cloudwatch/home?region=${this.region}#dashboards/dashboard/${dashboard.dashboardName}`,
+    });
   }
 }

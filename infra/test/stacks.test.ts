@@ -5,7 +5,7 @@ import { LAMBDA_ADAPTER_LAYER_VERSION } from '../lib/python-backend';
 import { App, assertions, type Environment } from 'aws-cdk-lib';
 import { describe, expect, it } from 'vitest';
 
-import { KbApiStack } from '../lib/api-stack';
+import { KbApiStack, METRICS_NAMESPACE } from '../lib/api-stack';
 import { KbAuthStack } from '../lib/auth-stack';
 import { KbBudgetStack } from '../lib/budget-stack';
 import { KbFrontendStack } from '../lib/frontend-stack';
@@ -277,6 +277,33 @@ describe('CDK stacks', () => {
         }),
       );
     });
+  });
+
+  it('alarms on failed chat turns and charts the turn metrics the backend publishes', () => {
+    const template = primaryTemplates.api;
+    // The backend's metric records name this namespace and these dimensions.
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: { Variables: Match.objectLike({ METRICS_NAMESPACE }) },
+    });
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      Namespace: METRICS_NAMESPACE,
+      MetricName: 'turns',
+      Dimensions: Match.arrayEquals([
+        { Name: 'model', Value: 'us.anthropic.test-model-v1:0' },
+        { Name: 'stopReason', Value: 'error' },
+      ]),
+      Statistic: 'Sum',
+      Threshold: 1,
+      ComparisonOperator: 'GreaterThanOrEqualToThreshold',
+    });
+    const [dashboard] = Object.values(template.findResources('AWS::CloudWatch::Dashboard'));
+    const body = JSON.stringify(dashboard?.Properties);
+    expect(body).toContain(
+      `SEARCH('{${METRICS_NAMESPACE},model,stopReason} MetricName=\\\\\\"turns\\\\\\" model=\\\\\\"us.anthropic.test-model-v1:0\\\\\\"', 'Sum', 300)`,
+    );
+    for (const metric of ['turnMs', 'firstTextMs', 'inputTokens', 'outputTokens', 'toolCalls']) {
+      expect(body).toContain(`\\"${METRICS_NAMESPACE}\\",\\"${metric}\\",\\"model\\"`);
+    }
   });
 
   it('threads a 512 dimension into both index and embedding configuration', () => {

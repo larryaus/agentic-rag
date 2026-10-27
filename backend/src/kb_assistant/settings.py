@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     max_upload_bytes: int = Field(default=26_214_400, gt=0)
     abandoned_upload_minutes: int = Field(default=10, gt=0)
     chat_turn_deadline_seconds: float = Field(default=280, gt=0)
+    metrics_namespace: str = "KbAssistant"
+    # Set by Lambda when active tracing is on; names the X-Ray daemon's UDP address.
+    aws_xray_daemon_address: str = ""
     # Local deployment only. AWS reads none of these.
     database_url: str = ""
     llm_base_url: str = "https://api.openai.com/v1"
@@ -57,6 +60,11 @@ class Settings(BaseSettings):
     @property
     def route_names(self) -> set[str]:
         return set(self.kb_routes.split(","))
+
+    @property
+    def chat_model(self) -> str:
+        """The model that answers chat turns in this deployment."""
+        return self.chat_model_id if self.deploy_target == "aws" else self.llm_model
 
     @property
     def llm_key(self) -> str:

@@ -14,6 +14,7 @@
       "KNOWLEDGE_BASE_ID": null,
       "MAX_HISTORY_MESSAGES": "20",
       "MAX_TOOL_ITERATIONS": "6",
+      "METRICS_NAMESPACE": "KbAssistant",
       "OIDC_CLIENT_ID": null,
       "OIDC_ISSUER": null,
       "OIDC_JWKS_URL": null,
