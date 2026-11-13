@@ -501,6 +501,10 @@ URL), tap **Share → Add to Home Screen**, and it launches full screen like a n
 app. The service worker caches only the page shell and its hashed assets, never API
 responses, and is registered in production builds only.
 
+Sign-in tokens are kept in `localStorage` so the installed app stays signed in between
+launches; **Sign out** clears them, and a refresh token the provider rejects sends the
+user back to the sign-in screen.
+
 Remove everything with `npx -w infra cdk destroy --all`. The stacks use `DESTROY`
 removal policies for convenience; a production system should retain its data.
 
