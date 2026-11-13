@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { clearTokens, completeCallback } from './auth/auth';
 import { loadConfig } from './config';
+import { registerServiceWorker } from './pwa';
 import './styles.css';
 
 async function start(): Promise<void> {
@@ -29,3 +30,4 @@ async function start(): Promise<void> {
 }
 
 void start();
+registerServiceWorker();

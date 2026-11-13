@@ -1,4 +1,6 @@
 :root {
+  /* Grows by the notch / status-bar inset when installed to an iPhone Home Screen. */
+  --topbar-height: calc(64px + env(safe-area-inset-top, 0px));
   color: #182230;
   background: #edf1f5;
   font-family:
@@ -15,6 +17,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
+  -webkit-text-size-adjust: 100%;
 }
 
 button,
@@ -30,8 +34,14 @@ button {
 .app-shell {
   display: grid;
   grid-template:
-    "header header" 64px
-    "sidebar main" calc(100vh - 64px) / 340px 1fr;
+    "header header" var(--topbar-height)
+    "sidebar main" calc(100vh - var(--topbar-height)) / 340px 1fr;
+}
+
+@supports (height: 100dvh) {
+  .app-shell {
+    grid-template-rows: var(--topbar-height) calc(100dvh - var(--topbar-height));
+  }
 }
 
 .topbar {
@@ -39,9 +49,15 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: env(safe-area-inset-top, 0px) max(24px, env(safe-area-inset-right, 0px)) 0
+    max(24px, env(safe-area-inset-left, 0px));
   color: white;
   background: #172b3a;
+}
+
+.topbar .menu-button,
+.drawer-backdrop {
+  display: none;
 }
 
 .topbar > div {
@@ -439,6 +455,7 @@ p {
 .login-screen {
   display: grid;
   min-height: 100vh;
+  min-height: 100dvh;
   place-items: center;
   padding: 24px;
   background:
@@ -475,17 +492,90 @@ p {
   }
 
   .topbar {
-    height: 64px;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    height: var(--topbar-height);
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
   }
 
+  .topbar strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar > div {
+    min-width: 0;
+  }
+
+  .topbar button {
+    flex: none;
+  }
+
+  .topbar .menu-button {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    padding: 0;
+    font-size: 1.2rem;
+    line-height: 1;
+  }
+
+  /* Conversations and documents slide in over the chat instead of pushing it down. */
   aside {
-    max-height: 320px;
-    border-right: 0;
-    border-bottom: 1px solid #d7dee5;
+    position: fixed;
+    top: var(--topbar-height);
+    bottom: 0;
+    left: 0;
+    z-index: 20;
+    width: min(340px, 88vw);
+    border-right: 1px solid #d7dee5;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    visibility: hidden;
+    transform: translateX(-100%);
+    transition:
+      transform 0.2s ease,
+      visibility 0.2s;
+    overscroll-behavior: contain;
+  }
+
+  .app-shell.menu-open aside {
+    visibility: visible;
+    transform: none;
+  }
+
+  .app-shell.menu-open .drawer-backdrop {
+    position: fixed;
+    inset: var(--topbar-height) 0 0;
+    z-index: 10;
+    display: block;
+    border: 0;
+    padding: 0;
+    background: #10202c66;
   }
 
   .app-shell > main {
-    height: calc(100vh - 384px);
-    padding: 12px;
+    height: calc(100vh - var(--topbar-height));
+    height: calc(100dvh - var(--topbar-height));
+    padding: 12px max(12px, env(safe-area-inset-right, 0px))
+      max(12px, env(safe-area-inset-bottom, 0px))
+      max(12px, env(safe-area-inset-left, 0px));
+  }
+
+  /* iOS zooms the page when a focused field's text is smaller than 16px. */
+  textarea,
+  input,
+  select {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  aside {
+    transition: none;
   }
 }

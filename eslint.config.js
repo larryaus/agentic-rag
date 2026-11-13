@@ -45,6 +45,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ['frontend/public/sw.js'],
+    languageOptions: {
+      globals: { ...globals.serviceworker },
+    },
+  },
+  {
     files: ['**/*.test.{ts,tsx}'],
     languageOptions: {
       globals: {

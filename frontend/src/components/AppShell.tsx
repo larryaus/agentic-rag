@@ -15,6 +15,8 @@ export function AppShell(props: { config: AppConfig }): React.JSX.Element {
   const [conversationVersion, setConversationVersion] = useState(0);
   const [loadingSession, setLoadingSession] = useState(false);
   const [sessionError, setSessionError] = useState('');
+  // Phone-width layouts keep the sidebar in a drawer; wider ones ignore this.
+  const [menuOpen, setMenuOpen] = useState(false);
   const selectionVersion = useRef(0);
 
   const selectSession = async (id: string): Promise<void> => {
@@ -41,9 +43,18 @@ export function AppShell(props: { config: AppConfig }): React.JSX.Element {
   };
 
   return (
-    <div className="app-shell">
+    <div className={menuOpen ? 'app-shell menu-open' : 'app-shell'}>
       <header className="topbar">
         <div>
+          <button
+            type="button"
+            className="menu-button"
+            aria-label="Conversations and documents"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <span aria-hidden="true">☰</span>
+          </button>
           <span className="brand-mark">KB</span>
           <strong>Enterprise Knowledge Base</strong>
         </div>
@@ -56,8 +67,12 @@ export function AppShell(props: { config: AppConfig }): React.JSX.Element {
           config={props.config}
           {...(sessionId === undefined ? {} : { activeSessionId: sessionId })}
           refreshVersion={sessionVersion}
-          onSelect={(id) => void selectSession(id)}
+          onSelect={(id) => {
+            setMenuOpen(false);
+            void selectSession(id);
+          }}
           onNew={() => {
+            setMenuOpen(false);
             selectionVersion.current += 1;
             setLoadingSession(false);
             setSessionError('');
@@ -68,6 +83,13 @@ export function AppShell(props: { config: AppConfig }): React.JSX.Element {
         />
         <DocumentPanel config={props.config} />
       </aside>
+      <button
+        type="button"
+        className="drawer-backdrop"
+        aria-label="Close menu"
+        tabIndex={-1}
+        onClick={() => setMenuOpen(false)}
+      />
       <main>
         {sessionError === '' ? null : (
           <p role="alert" className="error-banner">

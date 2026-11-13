@@ -11,6 +11,14 @@ const STATE_KEY = 'kb.auth.state';
 const NONCE_KEY = 'kb.auth.nonce';
 const TOKENS_KEY = 'kb.auth.tokens';
 
+// Tokens live in localStorage so a sign-in outlasts the tab: iOS discards an installed
+// app's session storage whenever it cold-starts. The one-time PKCE values above stay in
+// sessionStorage, which is all a single redirect round trip needs.
+const tokenStore = (): Storage => localStorage;
+
+/** The identity provider answered a token request and refused it. */
+class TokenRejectedError extends Error {}
+
 export type TokenSet = {
   accessToken: string;
   idToken: string;
@@ -86,6 +94,9 @@ async function tokenRequest(
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: params,
   });
+  if (response.status === 400 || response.status === 401) {
+    throw new TokenRejectedError('Token exchange failed');
+  }
   if (!response.ok) {
     throw new Error('Token exchange failed');
   }
@@ -164,7 +175,7 @@ export async function completeCallback(config: AppConfig): Promise<TokenSet> {
     );
     const tokens = parseTokenResponse(response);
     await verifyCallbackIdToken(config, tokens.idToken, nonce);
-    sessionStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));
+    tokenStore().setItem(TOKENS_KEY, JSON.stringify(tokens));
     return tokens;
   } finally {
     sessionStorage.removeItem(VERIFIER_KEY);
@@ -174,7 +185,7 @@ export async function completeCallback(config: AppConfig): Promise<TokenSet> {
 }
 
 export function readTokens(): TokenSet | undefined {
-  const raw = sessionStorage.getItem(TOKENS_KEY);
+  const raw = tokenStore().getItem(TOKENS_KEY);
   if (raw === null) return undefined;
   try {
     const value = JSON.parse(raw) as Partial<TokenSet>;
@@ -204,21 +215,33 @@ export async function getAccessToken(config: AppConfig): Promise<string> {
     clearTokens();
     throw new Error('Session expired');
   }
-  const response = await tokenRequest(
-    config,
-    new URLSearchParams({
-      grant_type: 'refresh_token',
-      client_id: config.oidcClientId,
-      refresh_token: tokens.refreshToken,
-    }),
-  );
+  let response: TokenResponse;
+  try {
+    response = await tokenRequest(
+      config,
+      new URLSearchParams({
+        grant_type: 'refresh_token',
+        client_id: config.oidcClientId,
+        refresh_token: tokens.refreshToken,
+      }),
+    );
+  } catch (cause) {
+    // A stored refresh token eventually expires or is revoked. Return to the sign-in
+    // screen then; a network failure keeps the session so it can be retried.
+    if (cause instanceof TokenRejectedError) {
+      clearTokens();
+      window.location.assign(window.location.origin);
+      throw new Error('Session expired');
+    }
+    throw cause;
+  }
   const refreshed = parseTokenResponse(response, tokens.refreshToken);
-  sessionStorage.setItem(TOKENS_KEY, JSON.stringify(refreshed));
+  tokenStore().setItem(TOKENS_KEY, JSON.stringify(refreshed));
   return refreshed.accessToken;
 }
 
 export function clearTokens(): void {
-  sessionStorage.removeItem(TOKENS_KEY);
+  tokenStore().removeItem(TOKENS_KEY);
 }
 
 export function logout(config: AppConfig): void {

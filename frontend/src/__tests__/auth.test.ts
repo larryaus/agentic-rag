@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { beginLogin, logout } from '../auth/auth';
+import { beginLogin, getAccessToken, logout, readTokens } from '../auth/auth';
 import type { AppConfig } from '../config';
 
 const config: AppConfig = {
@@ -31,6 +31,8 @@ beforeEach(() => {
 afterEach(() => {
   Object.defineProperty(window, 'location', { configurable: true, value: original });
   sessionStorage.clear();
+  localStorage.clear();
+  vi.unstubAllGlobals();
 });
 
 function target(): URL {
@@ -50,7 +52,7 @@ describe('generic OIDC sign-in', () => {
   });
 
   it('logs out with the standard parameters for OIDC providers', () => {
-    sessionStorage.setItem(
+    localStorage.setItem(
       'kb.auth.tokens',
       JSON.stringify({ accessToken: 'a', idToken: 'id-token', refreshToken: 'r', expiresAt: 1 }),
     );
@@ -61,7 +63,7 @@ describe('generic OIDC sign-in', () => {
     expect(url.searchParams.get('post_logout_redirect_uri')).toBe('http://localhost:8000');
     expect(url.searchParams.get('id_token_hint')).toBe('id-token');
     expect(url.searchParams.has('logout_uri')).toBe(false);
-    expect(sessionStorage.getItem('kb.auth.tokens')).toBeNull();
+    expect(localStorage.getItem('kb.auth.tokens')).toBeNull();
   });
 
   it("logs out with Cognito's own parameter in cognito mode", () => {
@@ -70,5 +72,35 @@ describe('generic OIDC sign-in', () => {
     expect(url.searchParams.get('logout_uri')).toBe('http://localhost:8000');
     expect(url.searchParams.has('post_logout_redirect_uri')).toBe(false);
     expect(url.searchParams.has('id_token_hint')).toBe(false);
+  });
+
+  const expired = { accessToken: 'a', idToken: 'i', refreshToken: 'r', expiresAt: 1 };
+
+  it('refreshes an expired access token and keeps the session in localStorage', async () => {
+    localStorage.setItem('kb.auth.tokens', JSON.stringify(expired));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ access_token: 'a2', id_token: 'i2', expires_in: 3600 }),
+      ),
+    );
+    await expect(getAccessToken(config)).resolves.toBe('a2');
+    expect(readTokens()).toMatchObject({ accessToken: 'a2', refreshToken: 'r' });
+    expect(sessionStorage.getItem('kb.auth.tokens')).toBeNull();
+  });
+
+  it('returns to sign-in when the provider rejects the stored refresh token', async () => {
+    localStorage.setItem('kb.auth.tokens', JSON.stringify(expired));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 400 })));
+    await expect(getAccessToken(config)).rejects.toThrow('Session expired');
+    expect(readTokens()).toBeUndefined();
+    expect(assign).toHaveBeenCalledWith('http://localhost:8000');
+  });
+
+  it('keeps the session when a refresh fails for another reason', async () => {
+    localStorage.setItem('kb.auth.tokens', JSON.stringify(expired));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 503 })));
+    await expect(getAccessToken(config)).rejects.toThrow('Token exchange failed');
+    expect(readTokens()).toMatchObject({ refreshToken: 'r' });
   });
 });
