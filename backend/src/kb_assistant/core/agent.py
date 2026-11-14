@@ -31,6 +31,10 @@ from .tools import SEARCH_TOOL
 # content filter, running out of tool iterations, a reason a server invents) may have cut
 # the answer off, so the held masking tail is dropped rather than released.
 COMPLETE_STOPS = {"end_turn", "stop_sequence", "guardrail_intervened"}
+# Chunks are at most 512 tokens (Bedrock's fixed-size chunking and the local chunker),
+# which is about 2,000 characters of English. This cap only guards against an outsized
+# chunk; it must never cut a normal one, or the model loses the end of the passage.
+MAX_RESULT_CHARS = 4000
 # Strands logs tool input and model output at warning level; neither may reach the logs.
 logging.getLogger("strands").setLevel(logging.ERROR)
 
@@ -109,7 +113,7 @@ async def run_agent(
                         title=chunk.title,
                         documentId=chunk.document_id,
                         score=chunk.score,
-                        text=js_slice(chunk.text, 1500),
+                        text=js_slice(chunk.text, MAX_RESULT_CHARS),
                     )
                 )
             return {

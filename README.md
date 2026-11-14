@@ -505,6 +505,10 @@ Sign-in tokens are kept in `localStorage` so the installed app stays signed in b
 launches; **Sign out** clears them, and a refresh token the provider rejects sends the
 user back to the sign-in screen.
 
+If the answer stream drops (iOS suspends an app that is sent to the background), the
+server still finishes and saves the turn. When the app is back in front, the chat panel
+reads the conversation back and shows the saved answer, polling until it is written.
+
 Remove everything with `npx -w infra cdk destroy --all`. The stacks use `DESTROY`
 removal policies for convenience; a production system should retain its data.
 
