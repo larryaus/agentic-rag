@@ -546,8 +546,21 @@ Not built yet, with the hooks already in place:
 
 - Department and date metadata filtering (the Cognito attribute and document metadata
   already exist)
-- Hybrid retrieval and reranking on AWS (the local deployment already fuses vector and
-  keyword search)
+- Retrieval evals for the AWS deployment, then hybrid retrieval and reranking there. The
+  evals score only the local pipeline today, while AWS answers from vector-only Bedrock
+  Knowledge Base search with no reranking. Run the golden set against a deployed
+  knowledge base, and grow it past 24 questions over eight chunks so a ranking change
+  moves the scores, before choosing a reranker (the local deployment already fuses
+  vector and keyword search)
+- Document management and upload permissions. Only `FAILED` documents can be removed:
+  add deleting and replacing `READY` documents, including their vectors. Today any
+  signed-in user can upload to the shared library and the guardrail does not check
+  retrieved text, so one planted document can steer everyone's answers. Limit uploads
+  to a group, add per-document access, and screen retrieved passages for prompt attacks
+- Per-user rate limits and higher chat capacity. The chat function's reserved
+  concurrency is 5 and a turn can hold a slot for up to five minutes, so five people
+  asking at once fill it. Add a per-user quota on turns and tokens, enforced before the
+  model call, then raise the concurrency
 - A human-approval step for sensitive actions
 - Model spend on the dashboard (it charts tokens; AWS Budgets tracks actual spend)
 - WAF and a custom domain
