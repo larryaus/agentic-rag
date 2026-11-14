@@ -4,10 +4,20 @@ import { useEffect, useRef, useState } from 'react';
 import type { AppConfig } from '../config';
 import { getAccessToken } from '../auth/auth';
 import { apiFetch } from '../api/http';
+import { recoverTurn } from '../api/recover';
 import { streamChat } from '../api/sse';
 import { CitationText } from './CitationText';
 
 type ChatMessage = Pick<MessageView, 'role' | 'content' | 'citations'>;
+
+// The server gives a turn 280 seconds; recovery waits a little longer than that.
+const RECOVERY_WINDOW_MS = 300_000;
+
+const toChatMessage = (message: MessageView): ChatMessage => ({
+  role: message.role,
+  content: message.content,
+  citations: message.citations,
+});
 
 export function ChatPanel(props: {
   config: AppConfig;
@@ -83,12 +93,51 @@ export function ChatPanel(props: {
     }
   };
 
+  // The stream dropped after the server took the question, which keeps working and
+  // saves the answer; read it back instead of leaving the turn half-shown.
+  const recover = async (
+    sessionId: string,
+    question: string,
+    startedAt: number,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    setStatus('Connection lost. Fetching the answer…');
+    const result = await recoverTurn({
+      config: props.config,
+      sessionId,
+      question,
+      deadline: startedAt + RECOVERY_WINDOW_MS,
+      signal,
+      onPending: () =>
+        setStatus('Connection lost. The answer is still being written…'),
+    });
+    if (signal.aborted) return;
+    if (result.state === 'timeout') {
+      setStatus(
+        'The answer is taking longer than expected. Open this conversation again later to see it.',
+      );
+      return;
+    }
+    setMessages(result.messages.map(toChatMessage));
+    if (result.state === 'answered') {
+      setStatus('');
+    } else {
+      setStatus(
+        'The connection dropped before your question was saved. Please send it again.',
+      );
+      setInput((current) => (current === '' ? question : current));
+    }
+  };
+
   const submit = async (): Promise<void> => {
     const message = input.trim();
     if (message === '' || activeRequest.current !== undefined) return;
     const request = new AbortController();
     activeRequest.current = request;
     let receivedSession = false;
+    let serverSessionId: string | undefined;
+    let finished = false;
+    const startedAt = Date.now();
     let notified = false;
     const notifyCompleted = (): void => {
       if (notified) return;
@@ -114,21 +163,41 @@ export function ChatPanel(props: {
     try {
       const token = await getAccessToken(props.config);
       if (request.signal.aborted) return;
-      await streamChat({
-        url: props.config.chatUrl,
-        accessToken: token,
-        ...(props.sessionId === undefined
-          ? {}
-          : { sessionId: props.sessionId }),
-        message,
-        signal: request.signal,
-        onEvent: (event) => {
-          if (request.signal.aborted) return;
-          if (event.type === 'session') receivedSession = true;
-          handleEvent(event);
-          if (event.type === 'done') notifyCompleted();
-        },
-      });
+      try {
+        await streamChat({
+          url: props.config.chatUrl,
+          accessToken: token,
+          ...(props.sessionId === undefined
+            ? {}
+            : { sessionId: props.sessionId }),
+          message,
+          signal: request.signal,
+          onEvent: (event) => {
+            if (request.signal.aborted) return;
+            if (event.type === 'session') {
+              receivedSession = true;
+              serverSessionId = event.sessionId;
+            }
+            if (event.type === 'done' || event.type === 'error') {
+              finished = true;
+            }
+            handleEvent(event);
+            if (event.type === 'done') notifyCompleted();
+          },
+        });
+      } catch (cause) {
+        if (request.signal.aborted || serverSessionId === undefined) {
+          throw cause;
+        }
+        // Dropped after the server took the question: recovered below.
+      }
+      if (
+        !finished &&
+        serverSessionId !== undefined &&
+        !request.signal.aborted
+      ) {
+        await recover(serverSessionId, message, startedAt, request.signal);
+      }
     } catch (cause) {
       if (!request.signal.aborted) {
         setStatus(

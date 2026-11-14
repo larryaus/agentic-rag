@@ -16,10 +16,12 @@ import type { AppConfig } from '../config';
 import { ChatPanel } from '../components/ChatPanel';
 
 const mocks = vi.hoisted(() => ({
+  apiFetch: vi.fn(),
   getAccessToken: vi.fn(),
   streamChat: vi.fn(),
 }));
 
+vi.mock('../api/http', () => ({ apiFetch: mocks.apiFetch }));
 vi.mock('../auth/auth', () => ({ getAccessToken: mocks.getAccessToken }));
 vi.mock('../api/sse', () => ({ streamChat: mocks.streamChat }));
 
@@ -283,5 +285,70 @@ describe('ChatPanel message formatting', () => {
 
     expect(screen.getByText('what is **this**')).toBeInTheDocument();
     expect(screen.getByText('bold').tagName).toBe('STRONG');
+  });
+});
+
+describe('ChatPanel dropped streams', () => {
+  const sessionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const at = '2026-01-01T00:00:00.000Z';
+
+  function send(question: string) {
+    const props = { config, initialMessages, onSession: vi.fn(), onCompleted: vi.fn() };
+    render(<ChatPanel {...props} />);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: question } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    return props;
+  }
+
+  it('reads the saved answer back when the stream drops mid-answer', async () => {
+    mocks.getAccessToken.mockResolvedValue('token');
+    mocks.streamChat.mockImplementation(
+      async (options: { onEvent: (event: SseEvent) => void }) => {
+        options.onEvent({ type: 'session', sessionId });
+        options.onEvent({ type: 'text', delta: 'Employees get' });
+        throw new TypeError('Load failed');
+      },
+    );
+    mocks.apiFetch.mockResolvedValue({
+      json: async () => ({
+        messages: [
+          { role: 'user', content: 'How much leave?', citations: [], createdAt: at },
+          { role: 'assistant', content: 'Employees get 25 days.', citations: [], createdAt: at },
+        ],
+      }),
+    });
+    const props = send('How much leave?');
+    expect(await screen.findByText('Employees get 25 days.')).toBeInTheDocument();
+    expect(screen.queryByText('Load failed')).not.toBeInTheDocument();
+    expect(mocks.apiFetch).toHaveBeenCalledWith(
+      config,
+      `/v1/sessions/${sessionId}`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    await waitFor(() => expect(props.onCompleted).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
+  });
+
+  it('does not poll when the server reported the failure itself', async () => {
+    mocks.apiFetch.mockReset();
+    mocks.getAccessToken.mockResolvedValue('token');
+    mocks.streamChat.mockImplementation(
+      async (options: { onEvent: (event: SseEvent) => void }) => {
+        options.onEvent({ type: 'session', sessionId });
+        options.onEvent({ type: 'error', message: 'The request could not be completed.' });
+      },
+    );
+    send('How much leave?');
+    expect(await screen.findByText('The request could not be completed.')).toBeInTheDocument();
+    expect(mocks.apiFetch).not.toHaveBeenCalled();
+  });
+
+  it('shows the error when the request fails before the server takes the question', async () => {
+    mocks.apiFetch.mockReset();
+    mocks.getAccessToken.mockResolvedValue('token');
+    mocks.streamChat.mockRejectedValue(new Error('Chat request failed (503)'));
+    send('How much leave?');
+    expect(await screen.findByText('Chat request failed (503)')).toBeInTheDocument();
+    expect(mocks.apiFetch).not.toHaveBeenCalled();
   });
 });

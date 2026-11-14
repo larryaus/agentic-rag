@@ -158,7 +158,7 @@ async def test_tool_loop_order_usage_and_history():
         [TextDelta(0, "Searching."), tool(index=1), Stop("tool_use"), Usage(10, 2)],
         [TextDelta(0, "Answer [ref:1]"), Stop("end_turn"), Usage(3, 4)],
     )
-    retriever = Retrieval([chunk("x" * 1600)])
+    retriever = Retrieval([chunk("x" * 4100)])
     events = []
     history = turn("old", "old answer")
     result = await run(model, retriever, events, history=deepcopy(history))
@@ -170,7 +170,7 @@ async def test_tool_loop_order_usage_and_history():
     messages = model.calls[1]["messages"]
     assert messages[:3] == [*history, {"role": "user", "content": [{"text": "question"}]}]
     assert [next(iter(block)) for block in messages[3]["content"]] == ["text", "toolUse"]
-    assert results(messages[4])[0]["content"][0]["json"]["results"][0]["text"] == "x" * 1500
+    assert results(messages[4])[0]["content"][0]["json"]["results"][0]["text"] == "x" * 4000
     assert retriever.calls == [("query", 8)]
     assert [spec["name"] for spec in model.calls[0]["tools"]] == ["search_knowledge_base"]
     assert "[ref:N]" in model.calls[0]["system"]
@@ -315,3 +315,14 @@ async def test_other_model_failures_propagate_after_the_filter_finishes():
     with pytest.raises(RuntimeError, match="access denied"):
         await run(model, Retrieval(), guardrail=Guard())
     assert finished == [False]
+
+
+async def test_a_full_size_chunk_reaches_the_model_whole():
+    # A 512-token English chunk is about 2,000 characters; its end must not be cut.
+    passage = "word " * 480 + "the answer is at the end"
+    model = Model(
+        [tool(index=0), Stop("tool_use")],
+        [TextDelta(0, "Answer [ref:1]"), Stop("end_turn")],
+    )
+    await run(model, Retrieval([chunk(passage)]), [])
+    assert results(model.calls[1]["messages"][2])[0]["content"][0]["json"]["results"][0]["text"] == passage
